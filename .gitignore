@@ -1,0 +1,9 @@
+.DS_Store
+
+# project docs and planning artifacts
+docs/
+sdd/
+
+# local editor settings
+.idea/
+.vscode/
