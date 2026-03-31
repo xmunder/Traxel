@@ -7,3 +7,8 @@ sdd/
 # local editor settings
 .idea/
 .vscode/
+
+# local agent instructions
+agents.md
+.agents/
+skills-lock.json

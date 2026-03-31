@@ -17,11 +17,8 @@ def test_post_vectorize_returns_placeholder_svg_for_valid_image(
     assert response.status_code == 200
     payload = response.json()
     assert payload["svg"].startswith("<svg")
-    assert payload["metadata"] == {
-        "colors_detected": 0,
-        "paths_generated": 0,
-        "duration_ms": payload["metadata"]["duration_ms"],
-    }
+    assert payload["metadata"]["colors_detected"] >= 1
+    assert payload["metadata"]["paths_generated"] == 0
     assert payload["metadata"]["duration_ms"] >= 0
 
 
@@ -67,13 +64,13 @@ def test_post_vectorize_returns_500_for_unexpected_failures(
     image_bytes_factory,
     monkeypatch,
 ) -> None:
-    def broken_placeholder(_: object) -> object:
+    def broken_processor(_: object) -> object:
         raise RuntimeError("boom")
 
     monkeypatch.setattr(
         routes_package.vectorize,
-        "build_placeholder_vectorize_response",
-        broken_placeholder,
+        "process_image",
+        broken_processor,
     )
 
     response = client.post(

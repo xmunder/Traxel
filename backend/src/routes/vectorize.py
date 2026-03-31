@@ -7,10 +7,10 @@ from fastapi import APIRouter, HTTPException, Request
 from starlette.datastructures import UploadFile
 
 from src.models.schemas import ErrorResponse, VectorizeMetadata, VectorizeResponse
+from src.services.image_processor import ProcessedImage, process_image
 from src.services.svg_builder import build_placeholder_svg
 from src.utils.validators import (
     ImageValidationError,
-    ValidatedImage,
     validate_uploaded_image,
 )
 
@@ -21,14 +21,15 @@ router = APIRouter()
 
 
 def build_placeholder_vectorize_response(
-    validated_image: ValidatedImage,
+    processed_image: ProcessedImage,
 ) -> VectorizeResponse:
     return VectorizeResponse(
         svg=build_placeholder_svg(
-            width=validated_image.width, height=validated_image.height
+            width=processed_image.original_width,
+            height=processed_image.original_height,
         ),
         metadata=VectorizeMetadata(
-            colors_detected=0,
+            colors_detected=processed_image.colors_detected,
             paths_generated=0,
             duration_ms=0,
         ),
@@ -55,7 +56,8 @@ async def post_vectorize(request: Request) -> VectorizeResponse:
         validated_image = await validate_uploaded_image(
             upload if isinstance(upload, UploadFile) else None
         )
-        placeholder_response = build_placeholder_vectorize_response(validated_image)
+        processed_image = process_image(validated_image)
+        placeholder_response = build_placeholder_vectorize_response(processed_image)
         duration_ms = int((perf_counter() - started_at) * 1000)
         response = placeholder_response.model_copy(
             update={
