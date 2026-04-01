@@ -1,0 +1,37 @@
+<section class="panel">
+	<div class="section-copy">
+		<h1>Vectorizador de imagen a SVG</h1>
+		<p>
+			Subí una imagen y procesala directo contra el backend real. El MVP mantiene el flujo simple:
+			una sola imagen, preview clara y descarga inmediata.
+		</p>
+	</div>
+
+	<form class="upload-form" data-upload-form novalidate>
+		<label
+			class="upload-zone"
+			data-dropzone
+			for="image-input"
+			tabindex="0"
+			aria-describedby="upload-help upload-status upload-error"
+		>
+			<input
+				id="image-input"
+				class="sr-only"
+				data-image-input
+				type="file"
+				name="image"
+				accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
+			/>
+			<span class="upload-zone__title">Hacé click o arrastrá una imagen</span>
+			<span class="upload-zone__copy">PNG, JPG, JPEG o WEBP · hasta 5 MB</span>
+			<span class="upload-zone__file" data-selected-file>Ningún archivo seleccionado.</span>
+		</label>
+
+		<p id="upload-help" class="muted">El único input visible del MVP es la imagen.</p>
+		<p id="upload-status" class="status" data-status aria-live="polite">
+			Esperando una imagen para vectorizar.
+		</p>
+		<p id="upload-error" class="error" data-error aria-live="assertive" hidden></p>
+	</form>
+</section>

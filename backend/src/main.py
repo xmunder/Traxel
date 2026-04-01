@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import get_settings
 from src.routes.vectorize import router as vectorize_router
@@ -20,6 +21,13 @@ def create_app() -> FastAPI:
     configure_logging()
 
     app = FastAPI(title="Vectorizer Backend", version="0.1.0")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:4321", "http://127.0.0.1:4321"],
+        allow_credentials=False,
+        allow_methods=["POST", "OPTIONS"],
+        allow_headers=["*"],
+    )
     app.include_router(vectorize_router)
     return app
 

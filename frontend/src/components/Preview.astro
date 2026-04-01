@@ -1,0 +1,55 @@
+<section class="panel preview-panel" data-preview-section hidden aria-labelledby="preview-title">
+	<div class="preview-panel__header">
+		<div>
+			<h2 id="preview-title">Preview del resultado</h2>
+			<p class="muted">Compará el original con el SVG antes de descargarlo.</p>
+		</div>
+
+		<div class="zoom-controls" aria-label="Controles de zoom de la preview">
+			<button type="button" class="secondary-button" data-zoom-out>-</button>
+			<span class="zoom-controls__label" data-zoom-label>100%</span>
+			<button type="button" class="secondary-button" data-zoom-in>+</button>
+		</div>
+	</div>
+
+	<dl class="metadata-list" aria-label="Metadata de la vectorización">
+		<div>
+			<dt>Colores detectados</dt>
+			<dd data-metadata-colors>—</dd>
+		</div>
+		<div>
+			<dt>Paths generados</dt>
+			<dd data-metadata-paths>—</dd>
+		</div>
+		<div>
+			<dt>Duración</dt>
+			<dd data-metadata-duration>—</dd>
+		</div>
+	</dl>
+
+	<div class="preview-grid">
+		<article class="preview-card">
+			<h3>Original</h3>
+			<div class="preview-frame">
+				<div class="preview-canvas" data-preview-canvas>
+					<img data-original-image alt="Preview de la imagen original" />
+				</div>
+			</div>
+		</article>
+
+		<article class="preview-card">
+			<h3>SVG generado</h3>
+			<div class="preview-frame">
+				<div class="preview-canvas" data-preview-canvas>
+					<div data-svg-container aria-label="Preview del SVG vectorizado"></div>
+				</div>
+			</div>
+		</article>
+	</div>
+
+	<div class="preview-actions">
+		<a class="primary-link" data-download-link href="#" download="vectorized.svg" aria-disabled="true">
+			Descargar SVG
+		</a>
+	</div>
+</section>
