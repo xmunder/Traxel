@@ -273,6 +273,56 @@ describe('vectorizer app UI behavior', () => {
 		}
 	});
 
+	test('mapea un 500 del backend y limpia cualquier preview residual previa', async () => {
+		const fetchMock = buildFetchMock({
+			ok: false,
+			status: 500,
+			body: { detail: 'Internal Server Error' },
+		});
+		const context = setupDom(createUploadMarkup(), fetchMock as unknown as typeof fetch);
+
+		try {
+			context.window.sessionStorage.setItem(
+				'vectorizer.workspace-result',
+				JSON.stringify({
+					filename: 'stale.png',
+					originalDataUrl: 'data:image/png;base64,stale',
+					svg: '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+					metadata: { colors_detected: 1, paths_generated: 1, duration_ms: 9 },
+					storedAt: new Date().toISOString(),
+				}),
+			);
+
+			await uploadFile(context, createPngFile('server-error.png'));
+
+			await waitFor(() => {
+				expect(context.errorBox?.textContent).toContain(
+					'No se pudo completar la vectorización. Intentá nuevamente en unos segundos.',
+				);
+			});
+
+			expect(context.status?.textContent).toContain('La vectorización falló.');
+			expect(context.window.sessionStorage.getItem('vectorizer.workspace-result')).toBeNull();
+
+			const workspaceContext = setupDom(createWorkspaceMarkup(), vi.fn() as unknown as typeof fetch);
+
+			try {
+				initVectorizerApp();
+
+				const ready = workspaceContext.document.querySelector<HTMLElement>('[data-workspace-ready]');
+				const empty = workspaceContext.document.querySelector<HTMLElement>('[data-workspace-empty]');
+
+				expect(ready?.hidden).toBe(true);
+				expect(empty?.hidden).toBe(false);
+				expect(workspaceContext.document.body.textContent).toContain('RETURN TO PORTAL');
+			} finally {
+				workspaceContext.cleanup();
+			}
+		} finally {
+			context.cleanup();
+		}
+	});
+
 	test('workspace muestra original, svg, metadata y descarga desde la sesión', async () => {
 		const uploadFetchMock = buildFetchMock({
 			ok: true,

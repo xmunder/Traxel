@@ -158,6 +158,14 @@ function saveWorkspaceResult(result: StoredWorkspaceResult): void {
 	}
 }
 
+function clearWorkspaceResult(): void {
+	try {
+		sessionStorage.removeItem(WORKSPACE_STORAGE_KEY);
+	} catch {
+		// Ignore storage cleanup failures and preserve current UX flow.
+	}
+}
+
 function readWorkspaceResult(): StoredWorkspaceResult | null {
 	try {
 		const raw = sessionStorage.getItem(WORKSPACE_STORAGE_KEY);
@@ -279,6 +287,7 @@ function initUploadPage(app: HTMLElement): void {
 	};
 
 	const vectorizeFile = async (file: File): Promise<void> => {
+		clearWorkspaceResult();
 		const validationError = validateFile(file);
 
 		selectedFile.textContent = file.name;
@@ -330,6 +339,7 @@ function initUploadPage(app: HTMLElement): void {
 			setState('success', 'Vectorización lista. Redirigiendo al workspace para comparación y descarga.');
 			navigateTo(workspacePath);
 		} catch (error) {
+			clearWorkspaceResult();
 			showError(getErrorMessage(error));
 			setState('error', 'La vectorización falló. Podés intentar nuevamente con otra imagen.');
 		} finally {
