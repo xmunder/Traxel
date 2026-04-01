@@ -12,3 +12,7 @@ sdd/
 agents.md
 .agents/
 skills-lock.json
+
+# coverage artifacts
+.coverage
+*.coverage

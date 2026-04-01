@@ -61,14 +61,38 @@ def create_multicolor_logo_png_bytes() -> bytes:
 
 def create_noisy_multicolor_logo_png_bytes() -> bytes:
     image = Image.new("RGB", (10, 10), (255, 0, 0))
-    pixels = image.load()
 
     for x in range(5, 10):
         for y in range(10):
-            pixels[x, y] = (0, 0, 255)
+            image.putpixel((x, y), (0, 0, 255))
 
-    pixels[0, 0] = (0, 255, 0)
+    image.putpixel((0, 0), (0, 255, 0))
 
     buffer = BytesIO()
     image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def create_monochrome_logo_png_bytes() -> bytes:
+    image = Image.new("RGB", (16, 16), (255, 255, 255))
+    drawer = Draw(image)
+    drawer.rectangle((3, 3, 12, 12), fill=(0, 0, 0))
+
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def create_photo_like_jpeg_bytes() -> bytes:
+    image = Image.new("RGB", (24, 24))
+
+    for x in range(24):
+        for y in range(24):
+            red = int((x / 23) * 255)
+            green = int((y / 23) * 255)
+            blue = int((((x + y) / 46) * 155) + 60)
+            image.putpixel((x, y), (red, green, blue))
+
+    buffer = BytesIO()
+    image.save(buffer, format="JPEG", quality=92)
     return buffer.getvalue()

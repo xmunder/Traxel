@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import builtins
+import tempfile
 from xml.etree import ElementTree
 
 from fastapi.testclient import TestClient
 
 from src import routes as routes_package
+from tests.fixtures.image_factory import create_photo_like_jpeg_bytes
 
 
 def test_post_vectorize_returns_svg_and_metadata_for_valid_image(
@@ -51,6 +54,23 @@ def test_post_vectorize_returns_clear_error_for_invalid_format(
     assert "Supported formats" in response.json()["detail"]
 
 
+def test_post_vectorize_accepts_valid_photo_like_jpeg_and_returns_svg(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/vectorize",
+        files={"image": ("photo.jpg", create_photo_like_jpeg_bytes(), "image/jpeg")},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["svg"].startswith("<svg")
+    assert payload["metadata"]["colors_detected"] >= 1
+    assert payload["metadata"]["paths_generated"] >= 1
+    assert payload["metadata"]["duration_ms"] >= 0
+
+
 def test_post_vectorize_returns_413_for_oversized_file(
     client: TestClient,
     oversized_png_bytes: bytes,
@@ -85,3 +105,34 @@ def test_post_vectorize_returns_500_for_unexpected_failures(
 
     assert response.status_code == 500
     assert response.json() == {"detail": "Vectorization failed unexpectedly."}
+
+
+def test_post_vectorize_processes_request_without_persisting_files(
+    client: TestClient,
+    image_bytes_factory,
+    monkeypatch,
+) -> None:
+    real_open = builtins.open
+
+    def guarded_open(file, mode="r", *args, **kwargs):
+        if any(flag in mode for flag in ("w", "a", "x", "+")):
+            raise AssertionError(
+                f"Unexpected filesystem write attempted: {file!r} ({mode})"
+            )
+        return real_open(file, mode, *args, **kwargs)
+
+    def fail_tempfile(*_args, **_kwargs):
+        raise AssertionError("Unexpected temporary file creation during request.")
+
+    monkeypatch.setattr(builtins, "open", guarded_open)
+    monkeypatch.setattr(tempfile, "mkstemp", fail_tempfile)
+    monkeypatch.setattr(tempfile, "mkdtemp", fail_tempfile)
+    monkeypatch.setattr(tempfile, "NamedTemporaryFile", fail_tempfile)
+
+    response = client.post(
+        "/vectorize",
+        files={"image": ("logo.png", image_bytes_factory("PNG"), "image/png")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["metadata"]["paths_generated"] >= 1
