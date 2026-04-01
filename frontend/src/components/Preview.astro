@@ -1,55 +1,64 @@
-<section class="panel preview-panel" data-preview-section hidden aria-labelledby="preview-title">
-	<div class="preview-panel__header">
-		<div>
-			<h2 id="preview-title">Preview del resultado</h2>
-			<p class="muted">Compará el original con el SVG antes de descargarlo.</p>
+<section class="workspace-review-shell" aria-label="Comparison workspace">
+	<section class="workspace-review-ready" data-workspace-ready hidden>
+		<div class="workspace-review-stage">
+			<article class="workspace-review-panel workspace-review-panel--original">
+				<div class="workspace-review-panel__header">
+					<span>Original Image</span>
+					<small data-workspace-filename>JPEG • SESSION</small>
+				</div>
+				<div class="workspace-review-panel__canvas">
+					<img data-original-image alt="Imagen raster original cargada por el usuario" />
+				</div>
+			</article>
+
+			<article class="workspace-review-panel workspace-review-panel--generated">
+				<div class="workspace-review-panel__header workspace-review-panel__header--generated">
+					<span>Generated SVG</span>
+					<div class="workspace-review-panel__pills">
+						<strong>Vector</strong>
+						<small>Scalable</small>
+					</div>
+				</div>
+				<div class="workspace-review-panel__canvas workspace-review-panel__canvas--vector">
+					<div data-svg-container aria-label="SVG generado por el backend"></div>
+					<button type="button" class="workspace-review-panel__zoom" aria-label="Zoom preview">
+						<span class="material-symbols-outlined">search</span>
+					</button>
+				</div>
+			</article>
 		</div>
 
-		<div class="zoom-controls" aria-label="Controles de zoom de la preview">
-			<button type="button" class="secondary-button" data-zoom-out>-</button>
-			<span class="zoom-controls__label" data-zoom-label>100%</span>
-			<button type="button" class="secondary-button" data-zoom-in>+</button>
-		</div>
-	</div>
-
-	<dl class="metadata-list" aria-label="Metadata de la vectorización">
-		<div>
-			<dt>Colores detectados</dt>
-			<dd data-metadata-colors>—</dd>
-		</div>
-		<div>
-			<dt>Paths generados</dt>
-			<dd data-metadata-paths>—</dd>
-		</div>
-		<div>
-			<dt>Duración</dt>
-			<dd data-metadata-duration>—</dd>
-		</div>
-	</dl>
-
-	<div class="preview-grid">
-		<article class="preview-card">
-			<h3>Original</h3>
-			<div class="preview-frame">
-				<div class="preview-canvas" data-preview-canvas>
-					<img data-original-image alt="Preview de la imagen original" />
+		<div class="workspace-review-toolbar">
+			<div class="workspace-review-toolbar__metrics">
+				<div class="workspace-review-metric">
+					<span>Colors</span>
+					<strong data-metadata-colors>—</strong>
+				</div>
+				<div class="workspace-review-metric">
+					<span>Paths</span>
+					<strong data-metadata-paths>—</strong>
+				</div>
+				<div class="workspace-review-metric">
+					<span>Time</span>
+					<strong data-metadata-duration>—</strong>
 				</div>
 			</div>
-		</article>
 
-		<article class="preview-card">
-			<h3>SVG generado</h3>
-			<div class="preview-frame">
-				<div class="preview-canvas" data-preview-canvas>
-					<div data-svg-container aria-label="Preview del SVG vectorizado"></div>
-				</div>
+			<div class="workspace-review-toolbar__actions">
+				<span class="workspace-review-toolbar__label">Settings</span>
+				<a class="workspace-review-header__action" data-download-link href="#" download="vectorized.svg" aria-disabled="true">
+					Download SVG
+				</a>
 			</div>
-		</article>
-	</div>
+		</div>
 
-	<div class="preview-actions">
-		<a class="primary-link" data-download-link href="#" download="vectorized.svg" aria-disabled="true">
-			Descargar SVG
-		</a>
-	</div>
+		<div hidden aria-hidden="true">
+			<span data-metadata-bezier>—</span>
+			<span data-trace-quality>ULTRA</span>
+			<span data-accuracy-index>98.4%</span>
+			<span data-system-status>OPERATIONAL</span>
+			<strong data-state-footer>STATE: READY</strong>
+			<ul data-log-list></ul>
+		</div>
+	</section>
 </section>

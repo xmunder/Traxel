@@ -1,37 +1,36 @@
-<section class="panel">
-	<div class="section-copy">
-		<h1>Vectorizador de imagen a SVG</h1>
-		<p>
-			Subí una imagen y procesala directo contra el backend real. El MVP mantiene el flujo simple:
-			una sola imagen, preview clara y descarga inmediata.
-		</p>
-	</div>
+<section class="mvp-upload-card" aria-labelledby="upload-title">
+	<form class="mvp-upload-card__frame" data-upload-form novalidate>
+		<input
+			id="image-input"
+			class="sr-only"
+			data-image-input
+			type="file"
+			name="image"
+			accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
+		/>
 
-	<form class="upload-form" data-upload-form novalidate>
-		<label
-			class="upload-zone"
-			data-dropzone
-			for="image-input"
-			tabindex="0"
-			aria-describedby="upload-help upload-status upload-error"
-		>
-			<input
-				id="image-input"
-				class="sr-only"
-				data-image-input
-				type="file"
-				name="image"
-				accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
-			/>
-			<span class="upload-zone__title">Hacé click o arrastrá una imagen</span>
-			<span class="upload-zone__copy">PNG, JPG, JPEG o WEBP · hasta 5 MB</span>
-			<span class="upload-zone__file" data-selected-file>Ningún archivo seleccionado.</span>
-		</label>
+		<div class="mvp-upload-card__dropzone" data-dropzone aria-describedby="upload-support upload-status upload-error">
+			<div class="mvp-upload-card__icon">
+				<span class="material-symbols-outlined">cloud_upload</span>
+			</div>
 
-		<p id="upload-help" class="muted">El único input visible del MVP es la imagen.</p>
-		<p id="upload-status" class="status" data-status aria-live="polite">
-			Esperando una imagen para vectorizar.
-		</p>
-		<p id="upload-error" class="error" data-error aria-live="assertive" hidden></p>
+			<div class="mvp-upload-card__copy">
+				<h2 id="upload-title">Drag your artwork here</h2>
+				<p class="mvp-upload-card__microcopy">or select a local file</p>
+			</div>
+
+			<button type="button" class="mvp-upload-card__button" data-upload-trigger>
+				Upload Image
+			</button>
+
+			<div class="mvp-upload-card__warning">
+				<span class="material-symbols-outlined">warning</span>
+				<span>Maximum file size: 5MB</span>
+			</div>
+
+			<p class="mvp-upload-card__statecopy" data-state-copy>Manual uplink ready</p>
+			<p class="status-line" id="upload-status" data-status aria-live="polite"></p>
+			<p class="error-line" id="upload-error" data-error aria-live="assertive" hidden></p>
+		</div>
 	</form>
 </section>

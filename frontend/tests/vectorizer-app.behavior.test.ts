@@ -20,50 +20,63 @@ type DomContext = {
 	window: Window & typeof globalThis;
 	document: Document;
 	input: HTMLInputElement;
-	status: HTMLElement;
-	errorBox: HTMLElement;
-	previewSection: HTMLElement;
-	originalImage: HTMLImageElement;
-	svgContainer: HTMLElement;
-	downloadLink: HTMLAnchorElement;
-	warning: HTMLElement;
+	uploadTrigger: HTMLElement | null;
+	status: HTMLElement | null;
+	errorBox: HTMLElement | null;
+	warning: HTMLElement | null;
 	cleanup: () => void;
 };
 
-function createMarkup(): string {
+function createUploadMarkup(): string {
 	return `
-		<main data-vectorizer-app data-endpoint="http://vectorizer.test/vectorize" data-state="idle">
-			<section>
-				<label data-dropzone aria-busy="false">
-					<input data-image-input type="file" />
-				</label>
+		<main data-vectorizer-app data-page="upload" data-endpoint="http://vectorizer.test/vectorize" data-workspace-path="/workspace" data-state="idle">
+			<section data-warning>
+				<strong>NON-BLOCKING NOTICE</strong>
+				<span>Optimized for logos & icons. Complex photos may lose fidelity, but the upload flow stays available.</span>
+			</section>
+			<form data-upload-form>
+				<input data-image-input type="file" />
+				<div data-dropzone aria-busy="false"></div>
+				<button type="button" data-upload-trigger>UPLOAD IMAGE</button>
 				<span data-selected-file>Ningún archivo seleccionado.</span>
+				<span data-state-label>READY</span>
+				<p data-state-copy>Esperando una imagen para vectorizar.</p>
 				<p data-status>Esperando una imagen para vectorizar.</p>
 				<p data-error hidden></p>
+				<strong data-state-footer>STATE: IDLE</strong>
+			</form>
+		</main>
+	`;
+}
+
+function createWorkspaceMarkup(): string {
+	return `
+		<main data-vectorizer-app data-page="workspace" data-state="idle">
+			<strong data-state-footer>STATE: STANDBY</strong>
+			<section data-warning>Best results still come from logos and icons.</section>
+			<section data-workspace-empty hidden>
+				<a href="/">RETURN TO PORTAL</a>
 			</section>
-			<aside data-warning>
-				<strong>Importante:</strong> esta herramienta está optimizada para logos e íconos.
-				En imágenes complejas o fotografías el resultado puede no quedar ideal, pero el flujo no se bloquea.
-			</aside>
-			<section data-preview-section hidden>
-				<div data-preview-canvas></div>
-				<div data-preview-canvas></div>
-				<img data-original-image alt="Preview de la imagen original" />
+			<section data-workspace-ready hidden>
+				<h2 data-workspace-filename>Session asset ready.</h2>
+				<span data-trace-quality>ULTRA</span>
+				<span data-accuracy-index>98.4%</span>
+				<span data-system-status>OPERATIONAL</span>
+				<img data-original-image alt="original" />
 				<div data-svg-container></div>
-				<a data-download-link href="#" aria-disabled="true">Descargar SVG</a>
+				<a data-download-link href="#" aria-disabled="true">DOWNLOAD_SVG_V1</a>
 				<dd data-metadata-colors>—</dd>
 				<dd data-metadata-paths>—</dd>
+				<dd data-metadata-bezier>—</dd>
 				<dd data-metadata-duration>—</dd>
-				<span data-zoom-label>100%</span>
-				<button type="button" data-zoom-in>+</button>
-				<button type="button" data-zoom-out>-</button>
+				<ul data-log-list></ul>
 			</section>
 		</main>
 	`;
 }
 
-function setupDom(fetchMock: typeof fetch): DomContext {
-	const dom = new JSDOM(createMarkup(), {
+function setupDom(markup: string, fetchMock: typeof fetch): DomContext {
+	const dom = new JSDOM(markup, {
 		url: 'http://vectorizer.test',
 		pretendToBeVisual: true,
 	});
@@ -78,16 +91,14 @@ function setupDom(fetchMock: typeof fetch): DomContext {
 		Event: globalThis.Event,
 		Blob: globalThis.Blob,
 		File: globalThis.File,
+		FileReader: globalThis.FileReader,
 		FormData: globalThis.FormData,
 		URL: globalThis.URL,
+		CustomEvent: globalThis.CustomEvent,
 		fetch: globalThis.fetch,
+		sessionStorage: globalThis.sessionStorage,
 	};
-	const objectUrls: string[] = [];
-	const createObjectURL = vi.fn(() => {
-		const nextUrl = `blob:vectorizer-${objectUrls.length + 1}`;
-		objectUrls.push(nextUrl);
-		return nextUrl;
-	});
+	const createObjectURL = vi.fn(() => 'blob:vectorizer-download');
 	const revokeObjectURL = vi.fn();
 
 	Object.assign(globalThis, {
@@ -101,8 +112,11 @@ function setupDom(fetchMock: typeof fetch): DomContext {
 		Event: dom.window.Event,
 		Blob,
 		File,
+		FileReader: dom.window.FileReader,
 		FormData,
+		CustomEvent: dom.window.CustomEvent,
 		fetch: fetchMock,
+		sessionStorage: dom.window.sessionStorage,
 	});
 
 	Object.defineProperty(dom.window, 'URL', {
@@ -128,14 +142,11 @@ function setupDom(fetchMock: typeof fetch): DomContext {
 	return {
 		window: dom.window as unknown as Window & typeof globalThis,
 		document: dom.window.document,
-		input: dom.window.document.querySelector('[data-image-input]')!,
-		status: dom.window.document.querySelector('[data-status]')!,
-		errorBox: dom.window.document.querySelector('[data-error]')!,
-		previewSection: dom.window.document.querySelector('[data-preview-section]')!,
-		originalImage: dom.window.document.querySelector('[data-original-image]')!,
-		svgContainer: dom.window.document.querySelector('[data-svg-container]')!,
-		downloadLink: dom.window.document.querySelector('[data-download-link]')!,
-		warning: dom.window.document.querySelector('[data-warning]')!,
+		input: dom.window.document.querySelector('[data-image-input]') as HTMLInputElement,
+		uploadTrigger: dom.window.document.querySelector('[data-upload-trigger]'),
+		status: dom.window.document.querySelector('[data-status]'),
+		errorBox: dom.window.document.querySelector('[data-error]'),
+		warning: dom.window.document.querySelector('[data-warning]'),
 		cleanup,
 	};
 }
@@ -188,10 +199,27 @@ function createJpegFile(name: string): File {
 
 afterEach(() => {
 	vi.restoreAllMocks();
+	globalThis.sessionStorage?.clear();
 });
 
 describe('vectorizer app UI behavior', () => {
-	test('mantiene warning visible con fotografía válida y sin detección automática en UI', async () => {
+	test('el CTA principal abre el selector de archivo', async () => {
+		const fetchMock = vi.fn();
+		const context = setupDom(createUploadMarkup(), fetchMock as unknown as typeof fetch);
+
+		try {
+			const inputClickSpy = vi.spyOn(context.input, 'click').mockImplementation(() => undefined);
+
+			context.uploadTrigger?.dispatchEvent(new context.window.MouseEvent('click', { bubbles: true }));
+
+			expect(inputClickSpy).toHaveBeenCalledTimes(1);
+			expect(fetchMock).not.toHaveBeenCalled();
+		} finally {
+			context.cleanup();
+		}
+	});
+
+	test('mantiene warning visible y guarda el resultado para el workspace', async () => {
 		const fetchMock = buildFetchMock({
 			ok: true,
 			status: 200,
@@ -200,129 +228,115 @@ describe('vectorizer app UI behavior', () => {
 				metadata: { colors_detected: 3, paths_generated: 1, duration_ms: 12 },
 			},
 		});
-		const context = setupDom(fetchMock as unknown as typeof fetch);
+		const context = setupDom(createUploadMarkup(), fetchMock as unknown as typeof fetch);
 
 		try {
-			expect(context.warning.textContent).toContain('esta herramienta está optimizada para logos e íconos');
-			expect(context.document.body.textContent).not.toContain('detección automática');
+			expect(context.warning?.textContent).toContain('Optimized for logos & icons');
+
+			const navigationListener = vi.fn();
+			context.window.addEventListener('vectorizer:navigate', navigationListener);
 
 			await uploadFile(context, createJpegFile('photo.jpg'));
 
 			await waitFor(() => {
-				expect(context.status.textContent).toContain('Vectorización lista.');
+				expect(context.status?.textContent).toContain('Redirigiendo al workspace');
 			});
 
-			expect(context.warning.textContent).toContain('fotografías el resultado puede no quedar ideal');
-			expect(context.document.body.textContent).not.toContain('foto detectada');
-			expect(context.previewSection.hidden).toBe(false);
+			const stored = context.window.sessionStorage.getItem('vectorizer.workspace-result');
+			expect(stored).not.toBeNull();
+			expect(stored).toContain('photo.jpg');
+			expect(navigationListener).toHaveBeenCalledTimes(1);
 		} finally {
 			context.cleanup();
 		}
 	});
 
-	test('mapea un 400 del backend como error claro por archivo inválido y no muestra preview', async () => {
+	test('mapea un 400 del backend como error claro y no persiste workspace', async () => {
 		const fetchMock = buildFetchMock({
 			ok: false,
 			status: 400,
 			body: { detail: 'The uploaded file is not a decodable image.' },
 		});
-		const context = setupDom(fetchMock as unknown as typeof fetch);
+		const context = setupDom(createUploadMarkup(), fetchMock as unknown as typeof fetch);
 
 		try {
 			await uploadFile(context, createPngFile('broken.png'));
 
 			await waitFor(() => {
-				expect(context.errorBox.textContent).toContain('The uploaded file is not a decodable image.');
+				expect(context.errorBox?.textContent).toContain('The uploaded file is not a decodable image.');
 			});
 
-			expect(context.status.textContent).toContain('La vectorización falló.');
-			expect(context.previewSection.hidden).toBe(true);
-			expect(context.svgContainer.innerHTML).toBe('');
-			expect(context.originalImage.getAttribute('src')).toBeNull();
-			expect(context.downloadLink.getAttribute('aria-disabled')).toBe('true');
+			expect(context.status?.textContent).toContain('La vectorización falló.');
+			expect(context.window.sessionStorage.getItem('vectorizer.workspace-result')).toBeNull();
 		} finally {
 			context.cleanup();
 		}
 	});
 
-	test('mapea un 500 del backend sin dejar preview ni descarga residual', async () => {
-		const fetchMock = buildFetchMock(
-			{
-				ok: true,
-				status: 200,
-				body: {
-					svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path fill="#FF0000" d="M0 0H10V10H0Z"/></svg>',
-					metadata: { colors_detected: 1, paths_generated: 1, duration_ms: 9 },
-				},
+	test('workspace muestra original, svg, metadata y descarga desde la sesión', async () => {
+		const uploadFetchMock = buildFetchMock({
+			ok: true,
+			status: 200,
+			body: {
+				svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path fill="#0000FF" d="M1 1H9V9H1Z"/></svg>',
+				metadata: { colors_detected: 2, paths_generated: 2, duration_ms: 11 },
 			},
-			{
-				ok: false,
-				status: 500,
-				body: { detail: 'Vectorization failed unexpectedly.' },
-			},
-		);
-		const context = setupDom(fetchMock as unknown as typeof fetch);
+		});
+		const uploadContext = setupDom(createUploadMarkup(), uploadFetchMock as unknown as typeof fetch);
 
 		try {
-			await uploadFile(context, createPngFile('first.png'));
+			await uploadFile(uploadContext, createPngFile('second.png'));
 			await waitFor(() => {
-				expect(context.previewSection.hidden).toBe(false);
+				expect(uploadContext.window.sessionStorage.getItem('vectorizer.workspace-result')).not.toBeNull();
 			});
 
-			await uploadFile(context, createPngFile('second.png'));
-			await waitFor(() => {
-				expect(context.errorBox.textContent).toContain('No se pudo completar la vectorización.');
-			});
+			const stored = uploadContext.window.sessionStorage.getItem('vectorizer.workspace-result');
+			const workspaceContext = setupDom(createWorkspaceMarkup(), vi.fn() as unknown as typeof fetch);
 
-			expect(context.previewSection.hidden).toBe(true);
-			expect(context.svgContainer.innerHTML).toBe('');
-			expect(context.originalImage.getAttribute('src')).toBeNull();
-			expect(context.downloadLink.getAttribute('aria-disabled')).toBe('true');
+			try {
+				if (stored) {
+					workspaceContext.window.sessionStorage.setItem('vectorizer.workspace-result', stored);
+				}
+				initVectorizerApp();
+
+				const ready = workspaceContext.document.querySelector<HTMLElement>('[data-workspace-ready]');
+				const empty = workspaceContext.document.querySelector<HTMLElement>('[data-workspace-empty]');
+				const originalImage = workspaceContext.document.querySelector<HTMLImageElement>('[data-original-image]');
+				const svgContainer = workspaceContext.document.querySelector<HTMLElement>('[data-svg-container]');
+				const downloadLink = workspaceContext.document.querySelector<HTMLAnchorElement>('[data-download-link]');
+				const colors = workspaceContext.document.querySelector<HTMLElement>('[data-metadata-colors]');
+				const paths = workspaceContext.document.querySelector<HTMLElement>('[data-metadata-paths]');
+				const bezier = workspaceContext.document.querySelector<HTMLElement>('[data-metadata-bezier]');
+				const duration = workspaceContext.document.querySelector<HTMLElement>('[data-metadata-duration]');
+
+				expect(ready?.hidden).toBe(false);
+				expect(empty?.hidden).toBe(true);
+				expect(originalImage?.getAttribute('src')).toContain('data:image/png;base64');
+				expect(svgContainer?.innerHTML).toContain('#0000FF');
+				expect(downloadLink?.getAttribute('download')).toBe('second.svg');
+				expect(downloadLink?.getAttribute('aria-disabled')).toBe('false');
+				expect(colors?.textContent).toBe('2');
+				expect(paths?.textContent).toBe('2');
+				expect(bezier?.textContent).toBe('8');
+				expect(duration?.textContent).toBe('11 ms');
+			} finally {
+				workspaceContext.cleanup();
+			}
 		} finally {
-			context.cleanup();
+			uploadContext.cleanup();
 		}
 	});
 
-	test('reemplaza la preview al subir una nueva imagen válida', async () => {
-		const fetchMock = buildFetchMock(
-			{
-				ok: true,
-				status: 200,
-				body: {
-					svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path fill="#FF0000" d="M0 0H10V10H0Z"/></svg>',
-					metadata: { colors_detected: 1, paths_generated: 1, duration_ms: 8 },
-				},
-			},
-			{
-				ok: true,
-				status: 200,
-				body: {
-					svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path fill="#0000FF" d="M1 1H9V9H1Z"/></svg>',
-					metadata: { colors_detected: 2, paths_generated: 2, duration_ms: 11 },
-				},
-			},
-		);
-		const context = setupDom(fetchMock as unknown as typeof fetch);
+	test('workspace vacío muestra retorno al portal cuando no hay sesión', () => {
+		const context = setupDom(createWorkspaceMarkup(), vi.fn() as unknown as typeof fetch);
 
 		try {
-			await uploadFile(context, createPngFile('first.png'));
-			await waitFor(() => {
-				expect(context.status.textContent).toContain('Vectorización lista.');
-			});
+			const ready = context.document.querySelector<HTMLElement>('[data-workspace-ready]');
+			const empty = context.document.querySelector<HTMLElement>('[data-workspace-empty]');
 
-			const firstOriginalUrl = context.originalImage.getAttribute('src');
-			const firstDownloadUrl = context.downloadLink.getAttribute('href');
-			expect(context.svgContainer.innerHTML).toContain('#FF0000');
-
-			await uploadFile(context, createPngFile('second.png'));
-			await waitFor(() => {
-				expect(context.svgContainer.innerHTML).toContain('#0000FF');
-			});
-
-			expect(context.svgContainer.innerHTML).not.toContain('#FF0000');
-			expect(context.originalImage.getAttribute('src')).not.toBe(firstOriginalUrl);
-			expect(context.downloadLink.getAttribute('href')).not.toBe(firstDownloadUrl);
-			expect(context.downloadLink.getAttribute('download')).toBe('second.svg');
+			expect(ready?.hidden).toBe(true);
+			expect(empty?.hidden).toBe(false);
+			expect(context.document.body.textContent).toContain('RETURN TO PORTAL');
 		} finally {
 			context.cleanup();
 		}

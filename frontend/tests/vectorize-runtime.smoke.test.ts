@@ -2,7 +2,7 @@ import { Buffer } from 'node:buffer';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 
 import { JSDOM } from 'jsdom';
-import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 
 import { initVectorizerApp } from '../src/lib/vectorizer-app';
 
@@ -67,6 +67,45 @@ function stopServer(server: ChildProcessWithoutNullStreams | null): void {
 	server.kill('SIGTERM');
 }
 
+function bindDom(dom: JSDOM, fetchImpl: typeof fetch): void {
+	const { window } = dom;
+	const NativeBlob = globalThis.Blob;
+	const NativeFile = globalThis.File;
+	const NativeFormData = globalThis.FormData;
+	const NativeURL = globalThis.URL;
+
+	Object.assign(globalThis, {
+		window,
+		document: window.document,
+		DOMParser: window.DOMParser,
+		HTMLElement: window.HTMLElement,
+		HTMLInputElement: window.HTMLInputElement,
+		HTMLImageElement: window.HTMLImageElement,
+		SVGElement: window.SVGElement,
+		Event: window.Event,
+		CustomEvent: window.CustomEvent,
+		Blob: NativeBlob,
+		File: NativeFile,
+		FileReader: window.FileReader,
+		FormData: NativeFormData,
+		fetch: fetchImpl,
+		sessionStorage: window.sessionStorage,
+	});
+
+	Object.defineProperty(window.URL, 'createObjectURL', {
+		value: vi.fn(() => 'blob:vectorizer-smoke'),
+		configurable: true,
+	});
+	Object.defineProperty(window.URL, 'revokeObjectURL', {
+		value: () => undefined,
+		configurable: true,
+	});
+	Object.defineProperty(globalThis, 'URL', {
+		value: window.URL ?? NativeURL,
+		configurable: true,
+	});
+}
+
 beforeAll(async () => {
 	backendServer = startServer(
 		'uv',
@@ -92,91 +131,72 @@ afterAll(() => {
 
 describe('frontend runtime smoke', () => {
 	test(
-		'carga imagen, mantiene warning, llega a success, muestra preview y habilita descarga',
+		'carga imagen desde / y muestra comparación completa en /workspace',
 		async () => {
-		const html = await fetch(FRONTEND_URL).then(async (response) => response.text());
-		const dom = new JSDOM(html, {
-			url: FRONTEND_URL,
-			pretendToBeVisual: true,
-		});
+			const uploadHtml = await fetch(FRONTEND_URL).then(async (response) => response.text());
+			const uploadDom = new JSDOM(uploadHtml, {
+				url: FRONTEND_URL,
+				pretendToBeVisual: true,
+			});
 
-		const { window } = dom;
-		const NativeBlob = globalThis.Blob;
-		const NativeFile = globalThis.File;
-		const NativeFormData = globalThis.FormData;
-		const nativeFetch = globalThis.fetch;
-		const createObjectURL = (() => {
-			let sequence = 0;
-			return () => `blob:vectorizer-${++sequence}`;
-		})();
+			bindDom(uploadDom, fetch);
+			initVectorizerApp();
 
-		Object.assign(globalThis, {
-			window,
-			document: window.document,
-			DOMParser: window.DOMParser,
-			HTMLElement: window.HTMLElement,
-			HTMLInputElement: window.HTMLInputElement,
-			HTMLImageElement: window.HTMLImageElement,
-			SVGElement: window.SVGElement,
-			Event: window.Event,
-			Blob: NativeBlob,
-			File: NativeFile,
-			FormData: NativeFormData,
-			fetch: nativeFetch,
-		});
+			expect(uploadDom.window.document.body.textContent).toContain('Optimized for logos');
 
-		Object.defineProperty(window.URL, 'createObjectURL', {
-			value: createObjectURL,
-			configurable: true,
-		});
-		Object.defineProperty(window.URL, 'revokeObjectURL', {
-			value: () => undefined,
-			configurable: true,
-		});
-		Object.defineProperty(globalThis, 'URL', {
-			value: window.URL,
-			configurable: true,
-		});
+			const input = uploadDom.window.document.querySelector<HTMLInputElement>('[data-image-input]');
+			const status = uploadDom.window.document.querySelector<HTMLElement>('[data-status]');
 
-		initVectorizerApp();
+			expect(input).not.toBeNull();
+			expect(status).not.toBeNull();
 
-		expect(window.document.body.textContent).toContain('esta herramienta está optimizada para logos e íconos');
+			const file = new File([Buffer.from(SMOKE_PNG_BASE64, 'base64')], 'smoke-logo.png', {
+				type: 'image/png',
+			});
 
-		const input = window.document.querySelector<HTMLInputElement>('[data-image-input]');
-		const status = window.document.querySelector<HTMLElement>('[data-status]');
-		const previewSection = window.document.querySelector<HTMLElement>('[data-preview-section]');
-		const originalImage = window.document.querySelector<HTMLImageElement>('[data-original-image]');
-		const svgContainer = window.document.querySelector<HTMLElement>('[data-svg-container]');
-		const downloadLink = window.document.querySelector<HTMLAnchorElement>('[data-download-link]');
+			Object.defineProperty(input!, 'files', {
+				value: [file],
+				configurable: true,
+			});
+			input!.dispatchEvent(new uploadDom.window.Event('change', { bubbles: true }));
 
-		expect(input).not.toBeNull();
-		expect(status).not.toBeNull();
-		expect(previewSection).not.toBeNull();
-		expect(originalImage).not.toBeNull();
-		expect(svgContainer).not.toBeNull();
-		expect(downloadLink).not.toBeNull();
+			await waitFor(() => status!.textContent?.includes('Redirigiendo al workspace') ?? false);
 
-		const file = new NativeFile([Buffer.from(SMOKE_PNG_BASE64, 'base64')], 'smoke-logo.png', {
-			type: 'image/png',
-		});
+			const stored = uploadDom.window.sessionStorage.getItem('vectorizer.workspace-result');
+			expect(stored).not.toBeNull();
 
-		Object.defineProperty(input!, 'files', {
-			value: [file],
-			configurable: true,
-		});
-		input!.dispatchEvent(new window.Event('change', { bubbles: true }));
+			const workspaceHtml = await fetch(`${FRONTEND_URL}/workspace`).then(async (response) => response.text());
+			const workspaceDom = new JSDOM(workspaceHtml, {
+				url: `${FRONTEND_URL}/workspace`,
+				pretendToBeVisual: true,
+			});
 
-		await waitFor(() => status!.textContent?.includes('Vectorización lista.') ?? false);
+			bindDom(workspaceDom, fetch);
+			if (stored) {
+				workspaceDom.window.sessionStorage.setItem('vectorizer.workspace-result', stored);
+			}
 
-		expect(status!.textContent).toContain('Vectorización lista.');
-		expect(previewSection!.hidden).toBe(false);
-		expect(originalImage!.getAttribute('src')).toContain('blob:vectorizer-');
-		expect(svgContainer!.innerHTML).toContain('<svg');
-		expect(downloadLink!.getAttribute('aria-disabled')).toBe('false');
-		expect(downloadLink!.getAttribute('download')).toBe('smoke-logo.svg');
-		expect(downloadLink!.getAttribute('href')).toContain('blob:vectorizer-');
+			initVectorizerApp();
 
-			window.close();
+			const ready = workspaceDom.window.document.querySelector<HTMLElement>('[data-workspace-ready]');
+			const originalImage = workspaceDom.window.document.querySelector<HTMLImageElement>('[data-original-image]');
+			const svgContainer = workspaceDom.window.document.querySelector<HTMLElement>('[data-svg-container]');
+			const downloadLink = workspaceDom.window.document.querySelector<HTMLAnchorElement>('[data-download-link]');
+			const colors = workspaceDom.window.document.querySelector<HTMLElement>('[data-metadata-colors]');
+			const paths = workspaceDom.window.document.querySelector<HTMLElement>('[data-metadata-paths]');
+			const duration = workspaceDom.window.document.querySelector<HTMLElement>('[data-metadata-duration]');
+
+			expect(ready?.hidden).toBe(false);
+			expect(originalImage?.getAttribute('src')).toContain('data:image/png;base64');
+			expect(svgContainer?.innerHTML).toContain('<svg');
+			expect(downloadLink?.getAttribute('aria-disabled')).toBe('false');
+			expect(downloadLink?.getAttribute('download')).toBe('smoke-logo.svg');
+			expect(colors?.textContent).not.toBe('—');
+			expect(paths?.textContent).not.toBe('—');
+			expect(duration?.textContent).toContain('ms');
+
+			uploadDom.window.close();
+			workspaceDom.window.close();
 		},
 		30_000,
 	);
