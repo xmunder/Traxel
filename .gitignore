@@ -16,3 +16,5 @@ skills-lock.json
 # coverage artifacts
 .coverage
 *.coverage
+
+assets_test/*

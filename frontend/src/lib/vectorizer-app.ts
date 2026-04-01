@@ -19,7 +19,7 @@ const WORKSPACE_STORAGE_KEY = 'vectorizer.workspace-result';
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const SUPPORTED_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const SUPPORTED_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp']);
-const DEFAULT_ENDPOINT = 'http://127.0.0.1:8000/vectorize';
+const DEFAULT_ENDPOINT = '/vectorize';
 
 class VectorizeRequestError extends Error {
 	constructor(
@@ -232,7 +232,7 @@ function navigateTo(path: string): void {
 		return;
 	}
 
-	window.location.assign(path);
+	window.location.href = path;
 }
 
 function initUploadPage(app: HTMLElement): void {
@@ -282,7 +282,11 @@ function initUploadPage(app: HTMLElement): void {
 		};
 
 		updateText(stateLabels, uiStateMap[nextState]);
-		updateText(stateCopies, nextStatus);
+		if (nextState === 'idle' && nextStatus === '') {
+			status.textContent = '';
+		} else {
+			updateText(stateCopies, nextStatus);
+		}
 		updateText(stateFooters, `STATE: ${uiStateMap[nextState]}`);
 	};
 
@@ -393,7 +397,7 @@ function initUploadPage(app: HTMLElement): void {
 	});
 
 	dropzone.dataset.dragging = 'false';
-	setState('idle', 'Esperando una imagen para vectorizar.');
+	setState('idle', '');
 }
 
 function initWorkspacePage(app: HTMLElement): void {

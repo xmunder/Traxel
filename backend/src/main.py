@@ -19,11 +19,12 @@ def configure_logging() -> None:
 
 def create_app() -> FastAPI:
     configure_logging()
+    settings = get_settings()
 
     app = FastAPI(title="Vectorizer Backend", version="0.1.0")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:4321", "http://127.0.0.1:4321"],
+        allow_origins=list(settings.cors_allow_origins),
         allow_credentials=False,
         allow_methods=["POST", "OPTIONS"],
         allow_headers=["*"],

@@ -13,6 +13,12 @@ class Settings(BaseSettings):
     default_max_colors: int = 8
     allowed_extensions: tuple[str, ...] = ("png", "jpg", "jpeg", "webp")
     allowed_content_types: tuple[str, ...] = ("image/png", "image/jpeg", "image/webp")
+    cors_allow_origins: tuple[str, ...] = (
+        "http://localhost:4321",
+        "http://127.0.0.1:4321",
+        "http://localhost:4411",
+        "http://127.0.0.1:4411",
+    )
 
 
 @lru_cache(maxsize=1)
