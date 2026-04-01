@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from xml.etree import ElementTree
+
 from fastapi.testclient import TestClient
 
 from src import routes as routes_package
 
 
-def test_post_vectorize_returns_placeholder_svg_for_valid_image(
+def test_post_vectorize_returns_svg_and_metadata_for_valid_image(
     client: TestClient,
     image_bytes_factory,
 ) -> None:
@@ -16,9 +18,12 @@ def test_post_vectorize_returns_placeholder_svg_for_valid_image(
 
     assert response.status_code == 200
     payload = response.json()
+    root = ElementTree.fromstring(payload["svg"])
+
     assert payload["svg"].startswith("<svg")
+    assert root.find("{http://www.w3.org/2000/svg}path") is not None
     assert payload["metadata"]["colors_detected"] >= 1
-    assert payload["metadata"]["paths_generated"] == 0
+    assert payload["metadata"]["paths_generated"] >= 1
     assert payload["metadata"]["duration_ms"] >= 0
 
 

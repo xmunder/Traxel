@@ -1,12 +1,35 @@
-def build_placeholder_svg(*, width: int, height: int) -> str:
-    """Build a deterministic placeholder SVG for the MVP contract."""
+from __future__ import annotations
 
-    return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" '
-        f'width="{width}" height="{height}" role="img" aria-label="Placeholder vectorization result">'
-        '<rect width="100%" height="100%" fill="#ffffff" />'
-        '<text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" fill="#111827" font-size="12">'
-        "Vectorization pending"
-        "</text>"
-        "</svg>"
+from xml.etree.ElementTree import Element, SubElement, tostring
+
+from src.services.vectorizer import VectorizationResult
+
+
+def build_svg_document(vectorization: VectorizationResult) -> str:
+    svg = Element(
+        "svg",
+        {
+            "xmlns": "http://www.w3.org/2000/svg",
+            "version": "1.1",
+            "viewBox": f"0 0 {vectorization.width} {vectorization.height}",
+            "width": str(vectorization.width),
+            "height": str(vectorization.height),
+        },
     )
+
+    for path in vectorization.paths:
+        if not path.d.strip():
+            continue
+
+        SubElement(
+            svg,
+            "path",
+            {
+                "d": path.d,
+                "fill": path.color_hex,
+                "fill-rule": "evenodd",
+                "clip-rule": "evenodd",
+            },
+        )
+
+    return tostring(svg, encoding="unicode", short_empty_elements=True)
