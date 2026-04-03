@@ -14,3 +14,9 @@ class VectorizeResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     detail: str
+
+
+class HealthResponse(BaseModel):
+    status: str
+    service: str
+    version: str

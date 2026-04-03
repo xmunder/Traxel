@@ -49,7 +49,14 @@ async def post_vectorize(request: Request) -> VectorizeResponse:
     form = await request.form()
     upload = form.get("image")
 
-    logger.info("Vectorize request received")
+    logger.info(
+        "Vectorize request received",
+        extra={
+            "method": request.method,
+            "path": request.url.path,
+            "content_type": getattr(upload, "content_type", None),
+        },
+    )
 
     try:
         validated_image = await validate_uploaded_image(
@@ -57,18 +64,21 @@ async def post_vectorize(request: Request) -> VectorizeResponse:
         )
         processed_image = process_image(validated_image)
         vectorize_response = build_vectorize_response(processed_image)
-        duration_ms = int((perf_counter() - started_at) * 1000)
+        processing_duration_ms = int((perf_counter() - started_at) * 1000)
         response = vectorize_response.model_copy(
             update={
                 "metadata": vectorize_response.metadata.model_copy(
-                    update={"duration_ms": duration_ms}
+                    update={"duration_ms": processing_duration_ms}
                 ),
             }
         )
+
         logger.info(
             "Vectorize request completed",
             extra={
-                "upload_filename": validated_image.filename,
+                "method": request.method,
+                "path": request.url.path,
+                "content_type": validated_image.media_type,
                 "size_bytes": validated_image.size_bytes,
                 "colors_detected": response.metadata.colors_detected,
                 "paths_generated": response.metadata.paths_generated,
@@ -81,15 +91,27 @@ async def post_vectorize(request: Request) -> VectorizeResponse:
         logger.warning(
             "Image validation failed",
             extra={
-                "upload_filename": getattr(upload, "filename", None),
+                "method": request.method,
+                "path": request.url.path,
+                "content_type": getattr(upload, "content_type", None),
                 "size_bytes": getattr(upload, "size", None),
                 "status_code": exc.status_code,
+                "error_type": type(exc).__name__,
                 "error_detail": exc.detail,
             },
         )
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     except Exception as exc:
-        logger.exception("Unexpected vectorization failure")
+        logger.exception(
+            "Unexpected vectorization failure",
+            extra={
+                "method": request.method,
+                "path": request.url.path,
+                "content_type": getattr(upload, "content_type", None),
+                "error_type": type(exc).__name__,
+                "error_detail": str(exc),
+            },
+        )
         raise HTTPException(
             status_code=500, detail="Vectorization failed unexpectedly."
         ) from exc

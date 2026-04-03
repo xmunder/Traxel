@@ -1,3 +1,3 @@
-from src.routes import vectorize
+from src.routes import health, vectorize
 
-__all__ = ["vectorize"]
+__all__ = ["health", "vectorize"]
