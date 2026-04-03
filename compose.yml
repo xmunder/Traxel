@@ -1,0 +1,37 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      SERVICE_NAME: ${SERVICE_NAME:-vectorizer-backend}
+      SERVICE_VERSION: ${SERVICE_VERSION:-0.1.0}
+      DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      TELEMETRY_ENABLED: ${TELEMETRY_ENABLED:-true}
+      OTEL_EXPORTER_PROTOCOL: ${OTEL_EXPORTER_PROTOCOL:-grpc}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+      OTEL_EXPORTER_OTLP_INSECURE: ${OTEL_EXPORTER_OTLP_INSECURE:-true}
+    ports:
+      - "8000:8000"
+    networks:
+      - vectorizer-app
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      PUBLIC_VECTORIZE_ENDPOINT: ${PUBLIC_VECTORIZE_ENDPOINT:-http://localhost:8000/vectorize}
+    ports:
+      - "4321:4321"
+    networks:
+      - vectorizer-app
+
+networks:
+  vectorizer-app:
+    name: ${VECTORIZER_NETWORK_NAME:-vectorizer-app}
