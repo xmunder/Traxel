@@ -45,6 +45,21 @@ const capabilities = [
 			data-workspace-path="/workspace"
 			data-state="idle"
 		>
+			<div class="upload-processing-overlay upload-processing-overlay--page" data-processing-overlay hidden aria-live="polite" aria-hidden="true">
+				<div class="upload-processing-overlay__content">
+					<div class="upload-processing-overlay__spinner" aria-hidden="true"></div>
+					<p class="upload-processing-overlay__eyebrow">Vectorizer engine active</p>
+					<h3 class="upload-processing-overlay__title" data-processing-status>PROCESSING</h3>
+					<p class="upload-processing-overlay__message" data-processing-message>
+						Preparando vectorización...
+					</p>
+					<div class="upload-processing-overlay__file">
+						<span>Selected file</span>
+						<strong data-selected-file>Ningún archivo seleccionado.</strong>
+					</div>
+				</div>
+			</div>
+
 			<header class="mvp-upload-header">
 				<div class="mvp-upload-header__brand">Vectorizer</div>
 				<div class="mvp-upload-header__actions">
@@ -107,17 +122,7 @@ const capabilities = [
 								))}
 							</div>
 
-							<div class="mvp-upload-runtime-panel">
-								<div class="mvp-upload-runtime-panel__item">
-									<span>Selected file</span>
-									<strong data-selected-file>Ningún archivo seleccionado.</strong>
-								</div>
-								<div class="mvp-upload-runtime-panel__item">
-									<span>Status</span>
-									<strong data-state-label>Ready</strong>
-								</div>
-							</div>
-						</aside>
+					</aside>
 					</section>
 				</div>
 			</main>

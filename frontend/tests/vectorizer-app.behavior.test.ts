@@ -4,6 +4,7 @@ import { JSDOM } from 'jsdom';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 import { initVectorizerApp } from '../src/lib/vectorizer-app';
+import { clearWorkspaceResult, readWorkspaceResult, saveWorkspaceResult } from '../src/lib/workspace-storage';
 
 const PNG_BASE64 =
 	'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAMElEQVR4nGP8//8/AymAhYGBgYGREVOCkQGLQf//MzCRZDwDw6iGUQ1U08BIavIGAA1ICRvdFHblAAAAAElFTkSuQmCC';
@@ -24,12 +25,18 @@ type DomContext = {
 	status: HTMLElement | null;
 	errorBox: HTMLElement | null;
 	warning: HTMLElement | null;
+	processingOverlay: HTMLElement | null;
 	cleanup: () => void;
 };
 
 function createUploadMarkup(): string {
 	return `
 		<main data-vectorizer-app data-page="upload" data-endpoint="http://vectorizer.test/vectorize" data-workspace-path="/workspace" data-state="idle">
+			<div data-processing-overlay hidden aria-hidden="true">
+				<h3 data-processing-status>PROCESSING</h3>
+				<p data-processing-message>Preparando vectorización...</p>
+				<strong data-selected-file>Ningún archivo seleccionado.</strong>
+			</div>
 			<section data-warning>
 				<strong>NON-BLOCKING NOTICE</strong>
 				<span>Optimized for logos & icons. Complex photos may lose fidelity, but the upload flow stays available.</span>
@@ -38,7 +45,6 @@ function createUploadMarkup(): string {
 				<input data-image-input type="file" />
 				<div data-dropzone aria-busy="false"></div>
 				<button type="button" data-upload-trigger>UPLOAD IMAGE</button>
-				<span data-selected-file>Ningún archivo seleccionado.</span>
 				<span data-state-label>READY</span>
 				<p data-state-copy>Esperando una imagen para vectorizar.</p>
 				<p data-status>Esperando una imagen para vectorizar.</p>
@@ -147,23 +153,24 @@ function setupDom(markup: string, fetchMock: typeof fetch): DomContext {
 		status: dom.window.document.querySelector('[data-status]'),
 		errorBox: dom.window.document.querySelector('[data-error]'),
 		warning: dom.window.document.querySelector('[data-warning]'),
+		processingOverlay: dom.window.document.querySelector('[data-processing-overlay]'),
 		cleanup,
 	};
 }
 
-async function waitFor(assertion: () => void, timeoutMs = 5_000): Promise<void> {
+async function waitFor(assertion: () => void | Promise<void>, timeoutMs = 5_000): Promise<void> {
 	const startedAt = Date.now();
 
 	while (Date.now() - startedAt < timeoutMs) {
 		try {
-			assertion();
+			await assertion();
 			return;
 		} catch {
 			await new Promise((resolve) => setTimeout(resolve, 25));
 		}
 	}
 
-	assertion();
+	await assertion();
 }
 
 function buildFetchMock(...responses: MockResponse[]) {
@@ -197,9 +204,82 @@ function createJpegFile(name: string): File {
 	return new File([Buffer.from(JPEG_BASE64, 'base64')], name, { type: 'image/jpeg' });
 }
 
-afterEach(() => {
+afterEach(async () => {
 	vi.restoreAllMocks();
 	globalThis.sessionStorage?.clear();
+	await clearWorkspaceResult();
+});
+
+describe('Session Storage Deprecation > Storage migration', () => {
+	test('el flujo de upload no escribe en sessionStorage', async () => {
+		const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
+		const getItemSpy = vi.spyOn(Storage.prototype, 'getItem');
+
+		const fetchMock = buildFetchMock({
+			ok: true,
+			status: 200,
+			body: {
+				svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>',
+				metadata: { colors_detected: 2, paths_generated: 4, duration_ms: 8 },
+			},
+		});
+		const context = setupDom(createUploadMarkup(), fetchMock as unknown as typeof fetch);
+
+		try {
+			await uploadFile(context, createPngFile('no-session.png'));
+
+			await waitFor(async () => {
+				expect(await readWorkspaceResult()).not.toBeNull();
+			});
+
+			// sessionStorage MUST NOT be written to at any point during the upload flow.
+			expect(setItemSpy).not.toHaveBeenCalled();
+			// sessionStorage MUST NOT be read from at any point during the upload flow.
+			expect(getItemSpy).not.toHaveBeenCalled();
+		} finally {
+			context.cleanup();
+		}
+	});
+
+	test('el flujo de workspace no lee de sessionStorage', async () => {
+		const fetchMock = buildFetchMock({
+			ok: true,
+			status: 200,
+			body: {
+				svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>',
+				metadata: { colors_detected: 3, paths_generated: 6, duration_ms: 15 },
+			},
+		});
+		const uploadContext = setupDom(createUploadMarkup(), fetchMock as unknown as typeof fetch);
+
+		try {
+			await uploadFile(uploadContext, createPngFile('ws-no-session.png'));
+
+			await waitFor(async () => {
+				expect(await readWorkspaceResult()).not.toBeNull();
+			});
+		} finally {
+			uploadContext.cleanup();
+		}
+
+		const getItemSpy = vi.spyOn(Storage.prototype, 'getItem');
+
+		const workspaceContext = setupDom(createWorkspaceMarkup(), vi.fn() as unknown as typeof fetch);
+
+		try {
+			initVectorizerApp();
+
+			await waitFor(() => {
+				const ready = workspaceContext.document.querySelector<HTMLElement>('[data-workspace-ready]');
+				expect(ready?.hidden).toBe(false);
+			});
+
+			// Workspace rendering MUST NOT read from sessionStorage at any point.
+			expect(getItemSpy).not.toHaveBeenCalled();
+		} finally {
+			workspaceContext.cleanup();
+		}
+	});
 });
 
 describe('vectorizer app UI behavior', () => {
@@ -234,18 +314,31 @@ describe('vectorizer app UI behavior', () => {
 			expect(context.warning?.textContent).toContain('Optimized for logos & icons');
 
 			const navigationListener = vi.fn();
+			const svgDownloadListener = vi.fn();
 			context.window.addEventListener('vectorizer:navigate', navigationListener);
+			context.window.addEventListener('vectorizer:svg-download', svgDownloadListener);
 
 			await uploadFile(context, createJpegFile('photo.jpg'));
+			expect(context.processingOverlay?.hidden).toBe(false);
 
+			// In JSDOM (no real IndexedDB), the fallback path fires an SVG download.
+			// In a real browser with IndexedDB, it would redirect to /workspace instead.
 			await waitFor(() => {
-				expect(context.status?.textContent).toContain('Redirigiendo al workspace');
+				const isWorkspaceRedirect = context.status?.textContent?.includes('Redirigiendo al workspace');
+				const isFallbackDownload = context.status?.textContent?.includes('Descargando SVG directamente');
+				expect(isWorkspaceRedirect || isFallbackDownload).toBe(true);
 			});
+			expect(context.processingOverlay?.hidden).toBe(true);
 
-			const stored = context.window.sessionStorage.getItem('vectorizer.workspace-result');
+			// At least one success path must have been taken.
+			const navigated = navigationListener.mock.calls.length > 0;
+			const downloaded = svgDownloadListener.mock.calls.length > 0;
+			expect(navigated || downloaded).toBe(true);
+
+			// If IndexedDB succeeded, result must be stored; if memory fallback, result is also stored.
+			const stored = await readWorkspaceResult();
 			expect(stored).not.toBeNull();
-			expect(stored).toContain('photo.jpg');
-			expect(navigationListener).toHaveBeenCalledTimes(1);
+			expect(stored?.filename).toBe('photo.jpg');
 		} finally {
 			context.cleanup();
 		}
@@ -267,7 +360,7 @@ describe('vectorizer app UI behavior', () => {
 			});
 
 			expect(context.status?.textContent).toContain('La vectorización falló.');
-			expect(context.window.sessionStorage.getItem('vectorizer.workspace-result')).toBeNull();
+			expect(await readWorkspaceResult()).toBeNull();
 		} finally {
 			context.cleanup();
 		}
@@ -282,16 +375,13 @@ describe('vectorizer app UI behavior', () => {
 		const context = setupDom(createUploadMarkup(), fetchMock as unknown as typeof fetch);
 
 		try {
-			context.window.sessionStorage.setItem(
-				'vectorizer.workspace-result',
-				JSON.stringify({
-					filename: 'stale.png',
-					originalDataUrl: 'data:image/png;base64,stale',
-					svg: '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
-					metadata: { colors_detected: 1, paths_generated: 1, duration_ms: 9 },
-					storedAt: new Date().toISOString(),
-				}),
-			);
+			await saveWorkspaceResult({
+				filename: 'stale.png',
+				originalFile: createPngFile('stale.png'),
+				svg: '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+				metadata: { colors_detected: 1, paths_generated: 1, duration_ms: 9 },
+				storedAt: new Date().toISOString(),
+			});
 
 			await uploadFile(context, createPngFile('server-error.png'));
 
@@ -302,18 +392,20 @@ describe('vectorizer app UI behavior', () => {
 			});
 
 			expect(context.status?.textContent).toContain('La vectorización falló.');
-			expect(context.window.sessionStorage.getItem('vectorizer.workspace-result')).toBeNull();
+			expect(await readWorkspaceResult()).toBeNull();
 
 			const workspaceContext = setupDom(createWorkspaceMarkup(), vi.fn() as unknown as typeof fetch);
 
 			try {
 				initVectorizerApp();
 
-				const ready = workspaceContext.document.querySelector<HTMLElement>('[data-workspace-ready]');
-				const empty = workspaceContext.document.querySelector<HTMLElement>('[data-workspace-empty]');
+				await waitFor(() => {
+					const ready = workspaceContext.document.querySelector<HTMLElement>('[data-workspace-ready]');
+					const empty = workspaceContext.document.querySelector<HTMLElement>('[data-workspace-empty]');
 
-				expect(ready?.hidden).toBe(true);
-				expect(empty?.hidden).toBe(false);
+					expect(ready?.hidden).toBe(true);
+					expect(empty?.hidden).toBe(false);
+				});
 				expect(workspaceContext.document.body.textContent).toContain('RETURN TO PORTAL');
 			} finally {
 				workspaceContext.cleanup();
@@ -336,39 +428,37 @@ describe('vectorizer app UI behavior', () => {
 
 		try {
 			await uploadFile(uploadContext, createPngFile('second.png'));
-			await waitFor(() => {
-				expect(uploadContext.window.sessionStorage.getItem('vectorizer.workspace-result')).not.toBeNull();
+			await waitFor(async () => {
+				expect(await readWorkspaceResult()).not.toBeNull();
 			});
 
-			const stored = uploadContext.window.sessionStorage.getItem('vectorizer.workspace-result');
 			const workspaceContext = setupDom(createWorkspaceMarkup(), vi.fn() as unknown as typeof fetch);
 
 			try {
-				if (stored) {
-					workspaceContext.window.sessionStorage.setItem('vectorizer.workspace-result', stored);
-				}
 				initVectorizerApp();
 
-				const ready = workspaceContext.document.querySelector<HTMLElement>('[data-workspace-ready]');
-				const empty = workspaceContext.document.querySelector<HTMLElement>('[data-workspace-empty]');
-				const originalImage = workspaceContext.document.querySelector<HTMLImageElement>('[data-original-image]');
-				const svgContainer = workspaceContext.document.querySelector<HTMLElement>('[data-svg-container]');
-				const downloadLink = workspaceContext.document.querySelector<HTMLAnchorElement>('[data-download-link]');
-				const colors = workspaceContext.document.querySelector<HTMLElement>('[data-metadata-colors]');
-				const paths = workspaceContext.document.querySelector<HTMLElement>('[data-metadata-paths]');
-				const bezier = workspaceContext.document.querySelector<HTMLElement>('[data-metadata-bezier]');
-				const duration = workspaceContext.document.querySelector<HTMLElement>('[data-metadata-duration]');
+				await waitFor(() => {
+					const ready = workspaceContext.document.querySelector<HTMLElement>('[data-workspace-ready]');
+					const empty = workspaceContext.document.querySelector<HTMLElement>('[data-workspace-empty]');
+					const originalImage = workspaceContext.document.querySelector<HTMLImageElement>('[data-original-image]');
+					const svgContainer = workspaceContext.document.querySelector<HTMLElement>('[data-svg-container]');
+					const downloadLink = workspaceContext.document.querySelector<HTMLAnchorElement>('[data-download-link]');
+					const colors = workspaceContext.document.querySelector<HTMLElement>('[data-metadata-colors]');
+					const paths = workspaceContext.document.querySelector<HTMLElement>('[data-metadata-paths]');
+					const bezier = workspaceContext.document.querySelector<HTMLElement>('[data-metadata-bezier]');
+					const duration = workspaceContext.document.querySelector<HTMLElement>('[data-metadata-duration]');
 
-				expect(ready?.hidden).toBe(false);
-				expect(empty?.hidden).toBe(true);
-				expect(originalImage?.getAttribute('src')).toContain('data:image/png;base64');
-				expect(svgContainer?.innerHTML).toContain('#0000FF');
-				expect(downloadLink?.getAttribute('download')).toBe('second.svg');
-				expect(downloadLink?.getAttribute('aria-disabled')).toBe('false');
-				expect(colors?.textContent).toBe('2');
-				expect(paths?.textContent).toBe('2');
-				expect(bezier?.textContent).toBe('8');
-				expect(duration?.textContent).toBe('11 ms');
+					expect(ready?.hidden).toBe(false);
+					expect(empty?.hidden).toBe(true);
+					expect(originalImage?.getAttribute('src')).toContain('blob:');
+					expect(svgContainer?.innerHTML).toContain('#0000FF');
+					expect(downloadLink?.getAttribute('download')).toBe('second.svg');
+					expect(downloadLink?.getAttribute('aria-disabled')).toBe('false');
+					expect(colors?.textContent).toBe('2');
+					expect(paths?.textContent).toBe('2');
+					expect(bezier?.textContent).toBe('8');
+					expect(duration?.textContent).toBe('11 ms');
+				});
 			} finally {
 				workspaceContext.cleanup();
 			}
@@ -377,16 +467,61 @@ describe('vectorizer app UI behavior', () => {
 		}
 	});
 
-	test('workspace vacío muestra retorno al portal cuando no hay sesión', () => {
+	test('workspace vacío muestra retorno al portal cuando no hay sesión', async () => {
 		const context = setupDom(createWorkspaceMarkup(), vi.fn() as unknown as typeof fetch);
 
 		try {
-			const ready = context.document.querySelector<HTMLElement>('[data-workspace-ready]');
-			const empty = context.document.querySelector<HTMLElement>('[data-workspace-empty]');
+			await waitFor(() => {
+				const ready = context.document.querySelector<HTMLElement>('[data-workspace-ready]');
+				const empty = context.document.querySelector<HTMLElement>('[data-workspace-empty]');
 
-			expect(ready?.hidden).toBe(true);
-			expect(empty?.hidden).toBe(false);
+				expect(ready?.hidden).toBe(true);
+				expect(empty?.hidden).toBe(false);
+			});
 			expect(context.document.body.textContent).toContain('RETURN TO PORTAL');
+		} finally {
+			context.cleanup();
+		}
+	});
+
+	test('cuando IndexedDB falla, permanece en "/" y dispara descarga automática del SVG', async () => {
+		// Simulate IndexedDB unavailable so saveWorkspaceResult returns { persisted: 'memory' }.
+		Object.defineProperty(globalThis, 'indexedDB', {
+			value: undefined,
+			configurable: true,
+			writable: true,
+		});
+
+		const fetchMock = buildFetchMock({
+			ok: true,
+			status: 200,
+			body: {
+				svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#FF0000"/></svg>',
+				metadata: { colors_detected: 1, paths_generated: 2, duration_ms: 7 },
+			},
+		});
+		const context = setupDom(createUploadMarkup(), fetchMock as unknown as typeof fetch);
+
+		try {
+			const navigationListener = vi.fn();
+			const svgDownloadListener = vi.fn();
+			context.window.addEventListener('vectorizer:navigate', navigationListener);
+			context.window.addEventListener('vectorizer:svg-download', svgDownloadListener);
+
+			await uploadFile(context, createPngFile('fallback-download.png'));
+
+			await waitFor(() => {
+				expect(context.status?.textContent).toContain('Descargando SVG directamente');
+			});
+
+			// MUST NOT navigate to /workspace.
+			expect(navigationListener).not.toHaveBeenCalled();
+
+			// MUST dispatch the svg-download event so the browser triggers the download.
+			expect(svgDownloadListener).toHaveBeenCalledTimes(1);
+
+			// URL must remain at "/", not at "/workspace".
+			expect(context.window.location.pathname).toBe('/');
 		} finally {
 			context.cleanup();
 		}

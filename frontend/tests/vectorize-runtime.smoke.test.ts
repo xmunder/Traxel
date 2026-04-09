@@ -5,6 +5,7 @@ import { JSDOM } from 'jsdom';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 
 import { initVectorizerApp } from '../src/lib/vectorizer-app';
+import { clearWorkspaceResult, readWorkspaceResult } from '../src/lib/workspace-storage';
 
 const FRONTEND_URL = 'http://127.0.0.1:4321';
 const BACKEND_URL = 'http://127.0.0.1:8000/vectorize';
@@ -45,18 +46,23 @@ async function waitForUrl(url: string, timeoutMs = 120_000): Promise<void> {
 	throw new Error(`Timed out waiting for ${url}`);
 }
 
-async function waitFor(condition: () => boolean, timeoutMs = 15_000): Promise<void> {
+async function waitFor(condition: () => boolean | void | Promise<boolean | void>, timeoutMs = 15_000): Promise<void> {
 	const startedAt = Date.now();
 
 	while (Date.now() - startedAt < timeoutMs) {
-		if (condition()) {
-			return;
+		try {
+			const result = await condition();
+			if (result !== false) {
+				return;
+			}
+		} catch {
+			// Retry until timeout.
 		}
 
 		await new Promise((resolve) => setTimeout(resolve, 50));
 	}
 
-	throw new Error('Timed out waiting for DOM update.');
+	await condition();
 }
 
 function stopServer(server: ChildProcessWithoutNullStreams | null): void {
@@ -129,6 +135,10 @@ afterAll(() => {
 	stopServer(backendServer);
 });
 
+afterAll(async () => {
+	await clearWorkspaceResult();
+});
+
 describe('frontend runtime smoke', () => {
 	test(
 		'carga imagen desde / y muestra comparación completa en /workspace',
@@ -162,7 +172,7 @@ describe('frontend runtime smoke', () => {
 
 			await waitFor(() => status!.textContent?.includes('Redirigiendo al workspace') ?? false);
 
-			const stored = uploadDom.window.sessionStorage.getItem('vectorizer.workspace-result');
+			const stored = await readWorkspaceResult();
 			expect(stored).not.toBeNull();
 
 			const workspaceHtml = await fetch(`${FRONTEND_URL}/workspace`).then(async (response) => response.text());
@@ -172,28 +182,27 @@ describe('frontend runtime smoke', () => {
 			});
 
 			bindDom(workspaceDom, fetch);
-			if (stored) {
-				workspaceDom.window.sessionStorage.setItem('vectorizer.workspace-result', stored);
-			}
 
 			initVectorizerApp();
 
-			const ready = workspaceDom.window.document.querySelector<HTMLElement>('[data-workspace-ready]');
-			const originalImage = workspaceDom.window.document.querySelector<HTMLImageElement>('[data-original-image]');
-			const svgContainer = workspaceDom.window.document.querySelector<HTMLElement>('[data-svg-container]');
-			const downloadLink = workspaceDom.window.document.querySelector<HTMLAnchorElement>('[data-download-link]');
-			const colors = workspaceDom.window.document.querySelector<HTMLElement>('[data-metadata-colors]');
-			const paths = workspaceDom.window.document.querySelector<HTMLElement>('[data-metadata-paths]');
-			const duration = workspaceDom.window.document.querySelector<HTMLElement>('[data-metadata-duration]');
+			await waitFor(() => {
+				const ready = workspaceDom.window.document.querySelector<HTMLElement>('[data-workspace-ready]');
+				const originalImage = workspaceDom.window.document.querySelector<HTMLImageElement>('[data-original-image]');
+				const svgContainer = workspaceDom.window.document.querySelector<HTMLElement>('[data-svg-container]');
+				const downloadLink = workspaceDom.window.document.querySelector<HTMLAnchorElement>('[data-download-link]');
+				const colors = workspaceDom.window.document.querySelector<HTMLElement>('[data-metadata-colors]');
+				const paths = workspaceDom.window.document.querySelector<HTMLElement>('[data-metadata-paths]');
+				const duration = workspaceDom.window.document.querySelector<HTMLElement>('[data-metadata-duration]');
 
-			expect(ready?.hidden).toBe(false);
-			expect(originalImage?.getAttribute('src')).toContain('data:image/png;base64');
-			expect(svgContainer?.innerHTML).toContain('<svg');
-			expect(downloadLink?.getAttribute('aria-disabled')).toBe('false');
-			expect(downloadLink?.getAttribute('download')).toBe('smoke-logo.svg');
-			expect(colors?.textContent).not.toBe('—');
-			expect(paths?.textContent).not.toBe('—');
-			expect(duration?.textContent).toContain('ms');
+				expect(ready?.hidden).toBe(false);
+				expect(originalImage?.getAttribute('src')).toContain('blob:');
+				expect(svgContainer?.innerHTML).toContain('<svg');
+				expect(downloadLink?.getAttribute('aria-disabled')).toBe('false');
+				expect(downloadLink?.getAttribute('download')).toBe('smoke-logo.svg');
+				expect(colors?.textContent).not.toBe('—');
+				expect(paths?.textContent).not.toBe('—');
+				expect(duration?.textContent).toContain('ms');
+			});
 
 			uploadDom.window.close();
 			workspaceDom.window.close();

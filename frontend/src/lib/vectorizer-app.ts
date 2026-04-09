@@ -1,25 +1,26 @@
-type VectorizeSuccessResponse = {
-	svg: string;
-	metadata: {
-		colors_detected: number;
-		paths_generated: number;
-		duration_ms: number;
-	};
-};
-
-type StoredWorkspaceResult = VectorizeSuccessResponse & {
-	filename: string;
-	originalDataUrl: string;
-	storedAt: string;
-};
+import {
+	clearWorkspaceResult,
+	readWorkspaceResult,
+	saveWorkspaceResult,
+	type SaveWorkspaceResultOutcome,
+	type StoredWorkspaceResult,
+	type VectorizeSuccessResponse,
+} from './workspace-storage';
 
 type VectorizerState = 'idle' | 'uploading' | 'success' | 'error';
 
-const WORKSPACE_STORAGE_KEY = 'vectorizer.workspace-result';
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const SUPPORTED_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const SUPPORTED_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp']);
 const DEFAULT_ENDPOINT = '/vectorize';
+const PROCESSING_STATUS_TITLE = 'PROCESSING';
+const PROCESSING_MESSAGES = [
+	'Validando imagen de entrada...',
+	'Reduciendo complejidad visual para optimizar el cálculo...',
+	'Analizando colores dominantes...',
+	'Generando paths SVG...',
+	'Preparando comparación final en el workspace...',
+];
 
 class VectorizeRequestError extends Error {
 	constructor(
@@ -129,75 +130,6 @@ function updateText(nodes: NodeListOf<HTMLElement>, value: string): void {
 	});
 }
 
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-	const bytes = new Uint8Array(buffer);
-	let binary = '';
-
-	for (const byte of bytes) {
-		binary += String.fromCharCode(byte);
-	}
-
-	if (typeof window.btoa === 'function') {
-		return window.btoa(binary);
-	}
-
-	throw new Error('No se pudo codificar la imagen seleccionada.');
-}
-
-async function readFileAsDataUrl(file: File): Promise<string> {
-	const buffer = await file.arrayBuffer();
-	const mimeType = file.type || 'application/octet-stream';
-	return `data:${mimeType};base64,${arrayBufferToBase64(buffer)}`;
-}
-
-function saveWorkspaceResult(result: StoredWorkspaceResult): void {
-	try {
-		sessionStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(result));
-	} catch {
-		throw new Error('No se pudo guardar el resultado de la sesión.');
-	}
-}
-
-function clearWorkspaceResult(): void {
-	try {
-		sessionStorage.removeItem(WORKSPACE_STORAGE_KEY);
-	} catch {
-		// Ignore storage cleanup failures and preserve current UX flow.
-	}
-}
-
-function readWorkspaceResult(): StoredWorkspaceResult | null {
-	try {
-		const raw = sessionStorage.getItem(WORKSPACE_STORAGE_KEY);
-		if (!raw) {
-			return null;
-		}
-
-		const parsed = JSON.parse(raw) as Partial<StoredWorkspaceResult>;
-		if (
-			typeof parsed.filename !== 'string' ||
-			typeof parsed.originalDataUrl !== 'string' ||
-			typeof parsed.svg !== 'string' ||
-			!parsed.metadata ||
-			typeof parsed.metadata.colors_detected !== 'number' ||
-			typeof parsed.metadata.paths_generated !== 'number' ||
-			typeof parsed.metadata.duration_ms !== 'number'
-		) {
-			return null;
-		}
-
-		return {
-			filename: parsed.filename,
-			originalDataUrl: parsed.originalDataUrl,
-			svg: parsed.svg,
-			metadata: parsed.metadata,
-			storedAt: typeof parsed.storedAt === 'string' ? parsed.storedAt : new Date().toISOString(),
-		};
-	} catch {
-		return null;
-	}
-}
-
 function buildWorkspaceLog(result: StoredWorkspaceResult): string[] {
 	return [
 		'INITIALIZING VECTOR ENGINE... DONE',
@@ -235,6 +167,20 @@ function navigateTo(path: string): void {
 	window.location.href = path;
 }
 
+function triggerSvgDownload(svg: string, filename: string): void {
+	const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+	const url = URL.createObjectURL(blob);
+	const anchor = document.createElement('a');
+	anchor.href = url;
+	anchor.download = buildDownloadFilename(filename);
+	anchor.style.display = 'none';
+	document.body.appendChild(anchor);
+	anchor.click();
+	document.body.removeChild(anchor);
+	URL.revokeObjectURL(url);
+	window.dispatchEvent(new CustomEvent('vectorizer:svg-download', { detail: { filename: buildDownloadFilename(filename) } }));
+}
+
 function initUploadPage(app: HTMLElement): void {
 	const endpoint = app.dataset.endpoint ?? DEFAULT_ENDPOINT;
 	const workspacePath = app.dataset.workspacePath ?? '/workspace';
@@ -244,6 +190,9 @@ function initUploadPage(app: HTMLElement): void {
 	const selectedFile = app.querySelector<HTMLElement>('[data-selected-file]');
 	const status = app.querySelector<HTMLElement>('[data-status]');
 	const errorBox = app.querySelector<HTMLElement>('[data-error]');
+	const processingOverlay = app.querySelector<HTMLElement>('[data-processing-overlay]');
+	const processingStatus = app.querySelector<HTMLElement>('[data-processing-status]');
+	const processingMessage = app.querySelector<HTMLElement>('[data-processing-message]');
 	const stateLabels = app.querySelectorAll<HTMLElement>('[data-state-label]');
 	const stateCopies = app.querySelectorAll<HTMLElement>('[data-state-copy]');
 	const stateFooters = app.querySelectorAll<HTMLElement>('[data-state-footer]');
@@ -253,6 +202,41 @@ function initUploadPage(app: HTMLElement): void {
 	}
 
 	let state: VectorizerState = 'idle';
+	let processingMessageIndex = 0;
+	let processingMessageTimer: number | null = null;
+
+	const stopProcessingOverlay = (): void => {
+		if (processingMessageTimer !== null) {
+			window.clearInterval(processingMessageTimer);
+			processingMessageTimer = null;
+		}
+
+		if (processingOverlay) {
+			processingOverlay.hidden = true;
+			processingOverlay.setAttribute('aria-hidden', 'true');
+		}
+	};
+
+	const startProcessingOverlay = (): void => {
+		if (!processingOverlay || !processingStatus || !processingMessage) {
+			return;
+		}
+
+		processingMessageIndex = 0;
+		processingOverlay.hidden = false;
+		processingOverlay.setAttribute('aria-hidden', 'false');
+		processingStatus.textContent = PROCESSING_STATUS_TITLE;
+		processingMessage.textContent = PROCESSING_MESSAGES[processingMessageIndex];
+
+		if (processingMessageTimer !== null) {
+			window.clearInterval(processingMessageTimer);
+		}
+
+		processingMessageTimer = window.setInterval(() => {
+			processingMessageIndex = (processingMessageIndex + 1) % PROCESSING_MESSAGES.length;
+			processingMessage.textContent = PROCESSING_MESSAGES[processingMessageIndex];
+		}, 1800);
+	};
 
 	const clearError = (): void => {
 		errorBox.hidden = true;
@@ -274,6 +258,12 @@ function initUploadPage(app: HTMLElement): void {
 			uploadTrigger.setAttribute('aria-disabled', String(nextState === 'uploading'));
 		}
 
+		if (nextState === 'uploading') {
+			startProcessingOverlay();
+		} else {
+			stopProcessingOverlay();
+		}
+
 		const uiStateMap: Record<VectorizerState, string> = {
 			idle: 'READY',
 			uploading: 'PROCESSING',
@@ -291,7 +281,7 @@ function initUploadPage(app: HTMLElement): void {
 	};
 
 	const vectorizeFile = async (file: File): Promise<void> => {
-		clearWorkspaceResult();
+		await clearWorkspaceResult();
 		const validationError = validateFile(file);
 
 		selectedFile.textContent = file.name;
@@ -330,23 +320,28 @@ function initUploadPage(app: HTMLElement): void {
 			}
 
 			sanitizeSvg(payload.svg);
-			const originalDataUrl = await readFileAsDataUrl(file);
-			saveWorkspaceResult({
+			const saveOutcome: SaveWorkspaceResultOutcome = await saveWorkspaceResult({
 				filename: file.name,
-				originalDataUrl,
+				originalFile: file,
 				svg: payload.svg,
 				metadata: payload.metadata,
 				storedAt: new Date().toISOString(),
 			});
 
 			clearError();
-			setState('success', 'Vectorización lista. Redirigiendo al workspace para comparación y descarga.');
-			navigateTo(workspacePath);
+			if (saveOutcome.persisted === 'indexeddb') {
+				setState('success', 'Vectorización lista. Redirigiendo al workspace para comparación y descarga.');
+				navigateTo(workspacePath);
+			} else {
+				setState('success', 'Vectorización lista. Descargando SVG directamente (almacenamiento no disponible).');
+				triggerSvgDownload(payload.svg, file.name);
+			}
 		} catch (error) {
-			clearWorkspaceResult();
+			await clearWorkspaceResult();
 			showError(getErrorMessage(error));
 			setState('error', 'La vectorización falló. Podés intentar nuevamente con otra imagen.');
 		} finally {
+			stopProcessingOverlay();
 			input.disabled = false;
 		}
 	};
@@ -400,7 +395,7 @@ function initUploadPage(app: HTMLElement): void {
 	setState('idle', '');
 }
 
-function initWorkspacePage(app: HTMLElement): void {
+async function initWorkspacePage(app: HTMLElement): Promise<void> {
 	const readySection = app.querySelector<HTMLElement>('[data-workspace-ready]');
 	const emptySection = app.querySelector<HTMLElement>('[data-workspace-empty]');
 	const originalImage = app.querySelector<HTMLImageElement>('[data-original-image]');
@@ -430,7 +425,7 @@ function initWorkspacePage(app: HTMLElement): void {
 		return;
 	}
 
-	const result = readWorkspaceResult();
+	const result = await readWorkspaceResult();
 	if (!result) {
 		if (emptySection) {
 			emptySection.hidden = false;
@@ -444,6 +439,7 @@ function initWorkspacePage(app: HTMLElement): void {
 	}
 
 	const safeSvg = sanitizeSvg(result.svg);
+	const originalImageUrl = URL.createObjectURL(result.originalFile);
 	const downloadUrl = URL.createObjectURL(new Blob([result.svg], { type: 'image/svg+xml;charset=utf-8' }));
 	const bezierNodes = Math.max(result.metadata.paths_generated * 4, result.metadata.paths_generated);
 
@@ -451,7 +447,7 @@ function initWorkspacePage(app: HTMLElement): void {
 	if (emptySection) {
 		emptySection.hidden = true;
 	}
-	originalImage.src = result.originalDataUrl;
+	originalImage.src = originalImageUrl;
 	svgContainer.innerHTML = safeSvg;
 	downloadLink.href = downloadUrl;
 	downloadLink.download = buildDownloadFilename(result.filename);
@@ -479,6 +475,7 @@ function initWorkspacePage(app: HTMLElement): void {
 	app.dataset.state = 'success';
 	updateText(stateFooters, 'STATE: OPERATIONAL');
 	window.addEventListener('beforeunload', () => {
+		URL.revokeObjectURL(originalImageUrl);
 		URL.revokeObjectURL(downloadUrl);
 	});
 }
@@ -492,7 +489,7 @@ export function initVectorizerApp(): void {
 
 	const page = app.dataset.page;
 	if (page === 'workspace') {
-		initWorkspacePage(app);
+		void initWorkspacePage(app);
 		return;
 	}
 
