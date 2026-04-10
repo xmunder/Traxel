@@ -8,12 +8,15 @@
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
-    "preview": "astro preview",
+    "preview": "pnpm run build && wrangler dev",
     "astro": "astro",
     "test:smoke": "vitest run tests/vectorize-runtime.smoke.test.ts",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "generate-types": "wrangler types",
+    "deploy": "pnpm run build && wrangler deploy"
   },
   "dependencies": {
+    "@astrojs/cloudflare": "^13.1.8",
     "astro": "^6.1.2"
   },
   "devDependencies": {
@@ -23,6 +26,10 @@
     "@types/node": "^25.5.0",
     "jsdom": "^26.1.0",
     "typescript": "^5.9.3",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "wrangler": "^4.81.1"
+  },
+  "overrides": {
+    "vite": "^7"
   }
 }
