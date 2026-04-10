@@ -15,11 +15,11 @@ const SUPPORTED_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp']);
 const DEFAULT_ENDPOINT = '/vectorize';
 const PROCESSING_STATUS_TITLE = 'PROCESSING';
 const PROCESSING_MESSAGES = [
-	'Validando imagen de entrada...',
-	'Reduciendo complejidad visual para optimizar el cálculo...',
-	'Analizando colores dominantes...',
-	'Generando paths SVG...',
-	'Preparando comparación final en el workspace...',
+	'Validating input image...',
+	'Reducing visual complexity to optimize tracing...',
+	'Analyzing dominant colors...',
+	'Generating SVG paths...',
+	'Preparing final comparison in workspace...',
 ];
 
 class VectorizeRequestError extends Error {
@@ -39,18 +39,18 @@ function getExtension(filename: string): string {
 
 function validateFile(file: File): string | null {
 	if (!file.size) {
-		return 'El archivo está vacío. Probá con otra imagen.';
+		return 'The file is empty. Please try a different image.';
 	}
 
 	if (file.size > MAX_FILE_SIZE) {
-		return 'La imagen excede el límite de 5 MB.';
+		return 'Image exceeds the 5 MB limit.';
 	}
 
 	const hasSupportedExtension = SUPPORTED_EXTENSIONS.has(getExtension(file.name));
 	const hasSupportedType = !file.type || SUPPORTED_TYPES.has(file.type);
 
 	if (!hasSupportedExtension || !hasSupportedType) {
-		return 'Formato no soportado. Usá PNG, JPG, JPEG o WEBP.';
+		return 'Unsupported format. Please use PNG, JPG, JPEG, or WEBP.';
 	}
 
 	return null;
@@ -68,7 +68,7 @@ function sanitizeSvg(svgText: string): string {
 	const svg = parsed.querySelector('svg');
 
 	if (parserError || !svg) {
-		throw new Error('SVG inválido recibido desde el backend.');
+		throw new Error('Invalid SVG received from the backend.');
 	}
 
 	parsed.querySelectorAll('script').forEach((node) => node.remove());
@@ -83,7 +83,7 @@ function sanitizeSvg(svgText: string): string {
 	svg.removeAttribute('width');
 	svg.removeAttribute('height');
 	svg.setAttribute('role', 'img');
-	svg.setAttribute('aria-label', 'Preview del SVG vectorizado');
+	svg.setAttribute('aria-label', 'Vectorized SVG preview');
 
 	return svg.outerHTML;
 }
@@ -95,11 +95,11 @@ function getErrorMessage(error: unknown): string {
 		}
 
 		if (error.status === 500) {
-			return 'No se pudo completar la vectorización. Intentá nuevamente en unos segundos.';
+			return 'Vectorization could not be completed. Please try again in a few seconds.';
 		}
 
 		if (error.status === 502) {
-			return 'No se pudo conectar con el backend. Verificá que el servicio esté levantado.';
+			return 'Could not connect to the backend. Please verify the service is running.';
 		}
 	}
 
@@ -107,7 +107,7 @@ function getErrorMessage(error: unknown): string {
 		return error.message;
 	}
 
-	return 'Ocurrió un error inesperado durante la vectorización.';
+	return 'An unexpected error occurred during vectorization.';
 }
 
 async function parseResponse(response: Response): Promise<unknown> {
@@ -289,12 +289,12 @@ function initUploadPage(app: HTMLElement): void {
 
 		if (validationError) {
 			showError(validationError);
-			setState('error', 'No se pudo iniciar la vectorización.');
+			setState('error', 'Could not start vectorization.');
 			return;
 		}
 
 		clearError();
-		setState('uploading', `Procesando ${file.name}...`);
+		setState('uploading', `Processing ${file.name}...`);
 
 		const formData = new FormData();
 		formData.append('image', file);
@@ -311,12 +311,12 @@ function initUploadPage(app: HTMLElement): void {
 				| null;
 
 			if (!response.ok) {
-				const detail = payload && 'detail' in payload && payload.detail ? payload.detail : 'La request falló.';
+				const detail = payload && 'detail' in payload && payload.detail ? payload.detail : 'The request failed.';
 				throw new VectorizeRequestError(response.status, detail);
 			}
 
-			if (!payload || !('svg' in payload) || !('metadata' in payload)) {
-				throw new Error('La respuesta del backend no tiene el formato esperado.');
+		if (!payload || !('svg' in payload) || !('metadata' in payload)) {
+				throw new Error('Backend response does not match the expected format.');
 			}
 
 			sanitizeSvg(payload.svg);
@@ -330,16 +330,16 @@ function initUploadPage(app: HTMLElement): void {
 
 			clearError();
 			if (saveOutcome.persisted === 'indexeddb') {
-				setState('success', 'Vectorización lista. Redirigiendo al workspace para comparación y descarga.');
+				setState('success', 'Vectorization complete. Redirecting to workspace for comparison and download.');
 				navigateTo(workspacePath);
 			} else {
-				setState('success', 'Vectorización lista. Descargando SVG directamente (almacenamiento no disponible).');
+				setState('success', 'Vectorization complete. Downloading SVG directly (storage unavailable).');
 				triggerSvgDownload(payload.svg, file.name);
 			}
 		} catch (error) {
 			await clearWorkspaceResult();
 			showError(getErrorMessage(error));
-			setState('error', 'La vectorización falló. Podés intentar nuevamente con otra imagen.');
+			setState('error', 'Vectorization failed. You can try again with a different image.');
 		} finally {
 			stopProcessingOverlay();
 			input.disabled = false;
@@ -378,7 +378,7 @@ function initUploadPage(app: HTMLElement): void {
 		});
 	}
 
-	for (const eventName of ['dragleave', 'dragend', 'drop']) {
+	for (const eventName of ['dragleave', 'dragend']) {
 		dropzone.addEventListener(eventName, (event) => {
 			const dragEvent = event as DragEvent;
 			dragEvent.preventDefault();
@@ -389,6 +389,9 @@ function initUploadPage(app: HTMLElement): void {
 	dropzone.addEventListener('drop', (event) => {
 		const dragEvent = event as DragEvent;
 		dragEvent.preventDefault();
+		dropzone.dataset.dragging = 'false';
+		const file = dragEvent.dataTransfer?.files?.[0] ?? null;
+		handleFile(file);
 	});
 
 	dropzone.dataset.dragging = 'false';

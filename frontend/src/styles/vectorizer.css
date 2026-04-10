@@ -2479,7 +2479,8 @@ img {
 	flex: 1;
 	display: flex;
 	justify-content: center;
-	padding: 1.75rem 1.25rem 0.75rem;
+	align-items: center;
+	padding: 1.25rem 1.25rem 0.75rem;
 	overflow: hidden;
 }
 
@@ -2511,13 +2512,14 @@ img {
 	position: relative;
 	width: min(100%, 1080px);
 	display: grid;
-	gap: 2rem;
+	gap: 1.25rem;
 	z-index: 1;
 }
 
 .mvp-upload-hero {
+	margin-bottom: 3.5rem;
 	display: grid;
-	gap: 0.75rem;
+	gap: 0.5rem;
 	max-width: 42rem;
 }
 

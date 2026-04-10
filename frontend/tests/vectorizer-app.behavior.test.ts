@@ -34,8 +34,8 @@ function createUploadMarkup(): string {
 		<main data-vectorizer-app data-page="upload" data-endpoint="http://vectorizer.test/vectorize" data-workspace-path="/workspace" data-state="idle">
 			<div data-processing-overlay hidden aria-hidden="true">
 				<h3 data-processing-status>PROCESSING</h3>
-				<p data-processing-message>Preparando vectorización...</p>
-				<strong data-selected-file>Ningún archivo seleccionado.</strong>
+				<p data-processing-message>Preparing vectorization...</p>
+				<strong data-selected-file>No file selected.</strong>
 			</div>
 			<section data-warning>
 				<strong>NON-BLOCKING NOTICE</strong>
@@ -46,8 +46,8 @@ function createUploadMarkup(): string {
 				<div data-dropzone aria-busy="false"></div>
 				<button type="button" data-upload-trigger>UPLOAD IMAGE</button>
 				<span data-state-label>READY</span>
-				<p data-state-copy>Esperando una imagen para vectorizar.</p>
-				<p data-status>Esperando una imagen para vectorizar.</p>
+				<p data-state-copy>Waiting for an image to vectorize.</p>
+				<p data-status>Waiting for an image to vectorize.</p>
 				<p data-error hidden></p>
 				<strong data-state-footer>STATE: IDLE</strong>
 			</form>
@@ -324,8 +324,8 @@ describe('vectorizer app UI behavior', () => {
 			// In JSDOM (no real IndexedDB), the fallback path fires an SVG download.
 			// In a real browser with IndexedDB, it would redirect to /workspace instead.
 			await waitFor(() => {
-				const isWorkspaceRedirect = context.status?.textContent?.includes('Redirigiendo al workspace');
-				const isFallbackDownload = context.status?.textContent?.includes('Descargando SVG directamente');
+				const isWorkspaceRedirect = context.status?.textContent?.includes('Redirecting to workspace');
+				const isFallbackDownload = context.status?.textContent?.includes('Downloading SVG directly');
 				expect(isWorkspaceRedirect || isFallbackDownload).toBe(true);
 			});
 			expect(context.processingOverlay?.hidden).toBe(true);
@@ -355,11 +355,11 @@ describe('vectorizer app UI behavior', () => {
 		try {
 			await uploadFile(context, createPngFile('broken.png'));
 
-			await waitFor(() => {
+		await waitFor(() => {
 				expect(context.errorBox?.textContent).toContain('The uploaded file is not a decodable image.');
 			});
 
-			expect(context.status?.textContent).toContain('La vectorización falló.');
+			expect(context.status?.textContent).toContain('Vectorization failed.');
 			expect(await readWorkspaceResult()).toBeNull();
 		} finally {
 			context.cleanup();
@@ -387,11 +387,11 @@ describe('vectorizer app UI behavior', () => {
 
 			await waitFor(() => {
 				expect(context.errorBox?.textContent).toContain(
-					'No se pudo completar la vectorización. Intentá nuevamente en unos segundos.',
+					'Vectorization could not be completed. Please try again in a few seconds.',
 				);
 			});
 
-			expect(context.status?.textContent).toContain('La vectorización falló.');
+			expect(context.status?.textContent).toContain('Vectorization failed.');
 			expect(await readWorkspaceResult()).toBeNull();
 
 			const workspaceContext = setupDom(createWorkspaceMarkup(), vi.fn() as unknown as typeof fetch);
@@ -511,7 +511,7 @@ describe('vectorizer app UI behavior', () => {
 			await uploadFile(context, createPngFile('fallback-download.png'));
 
 			await waitFor(() => {
-				expect(context.status?.textContent).toContain('Descargando SVG directamente');
+				expect(context.status?.textContent).toContain('Downloading SVG directly');
 			});
 
 			// MUST NOT navigate to /workspace.
@@ -522,6 +522,102 @@ describe('vectorizer app UI behavior', () => {
 
 			// URL must remain at "/", not at "/workspace".
 			expect(context.window.location.pathname).toBe('/');
+		} finally {
+			context.cleanup();
+		}
+	});
+
+	test('drag & drop procesa el archivo soltado y dispara vectorización', async () => {
+		const fetchMock = buildFetchMock({
+			ok: true,
+			status: 200,
+			body: {
+				svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#00FF00"/></svg>',
+				metadata: { colors_detected: 1, paths_generated: 3, duration_ms: 9 },
+			},
+		});
+		const context = setupDom(createUploadMarkup(), fetchMock as unknown as typeof fetch);
+
+		try {
+			const dropzone = context.document.querySelector<HTMLElement>('[data-dropzone]');
+			expect(dropzone).not.toBeNull();
+
+			const file = createPngFile('drag-drop.png');
+
+			// Simulate dragover — JSDOM does not implement DragEvent, use plain Event
+			const dragoverEvent = new context.window.Event('dragover', { bubbles: true, cancelable: true });
+			Object.defineProperty(dragoverEvent, 'preventDefault', { value: () => undefined });
+			dropzone!.dispatchEvent(dragoverEvent);
+			expect(dropzone!.dataset.dragging).toBe('true');
+
+			// Simulate drop with a dataTransfer stub
+			const dropEvent = new context.window.Event('drop', { bubbles: true, cancelable: true });
+			Object.defineProperty(dropEvent, 'preventDefault', { value: () => undefined });
+			Object.defineProperty(dropEvent, 'dataTransfer', {
+				value: { files: [file] },
+				configurable: true,
+			});
+			dropzone!.dispatchEvent(dropEvent);
+
+			// dragging flag must clear immediately
+			expect(dropzone!.dataset.dragging).toBe('false');
+
+			// fetch must be called — the file was handed off to handleFile → vectorizeFile
+			await waitFor(() => {
+				expect(fetchMock).toHaveBeenCalledTimes(1);
+			});
+
+			// Result must be stored in workspace storage
+			await waitFor(async () => {
+				expect(await readWorkspaceResult()).not.toBeNull();
+			});
+
+			const stored = await readWorkspaceResult();
+			expect(stored?.filename).toBe('drag-drop.png');
+		} finally {
+			context.cleanup();
+		}
+	});
+
+	test('drag & drop ignora el evento si ya hay una vectorización en curso', async () => {
+		// First upload occupies state = 'uploading'
+		let resolveFirst!: (v: Response) => void;
+		const blockedFetch = vi.fn(
+			() =>
+				new Promise<Response>((resolve) => {
+					resolveFirst = resolve;
+				}),
+		);
+
+		const context = setupDom(createUploadMarkup(), blockedFetch as unknown as typeof fetch);
+
+		try {
+			// Start an upload that won't resolve yet
+			await uploadFile(context, createPngFile('in-flight.png'));
+
+			// Now simulate a drop while uploading
+			const dropzone = context.document.querySelector<HTMLElement>('[data-dropzone]');
+			const dropEvent = new context.window.Event('drop', { bubbles: true, cancelable: true });
+			Object.defineProperty(dropEvent, 'preventDefault', { value: () => undefined });
+			Object.defineProperty(dropEvent, 'dataTransfer', {
+				value: { files: [createPngFile('dropped-while-busy.png')] },
+				configurable: true,
+			});
+			dropzone!.dispatchEvent(dropEvent);
+
+			// fetch must still have been called only once (the original upload)
+			expect(blockedFetch).toHaveBeenCalledTimes(1);
+
+			// Unblock the first fetch so cleanup works
+			resolveFirst(
+				new Response(
+					JSON.stringify({
+						svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect/></svg>',
+						metadata: { colors_detected: 1, paths_generated: 1, duration_ms: 5 },
+					}),
+					{ status: 200, headers: { 'content-type': 'application/json' } },
+				),
+			);
 		} finally {
 			context.cleanup();
 		}
