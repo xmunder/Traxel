@@ -1,0 +1,51 @@
+---
+const obsEndpoint = import.meta.env.PUBLIC_OBS_ENDPOINT ?? 'http://127.0.0.1:8000';
+---
+
+<div class="obs-login-shell" data-obs-login data-obs-endpoint={obsEndpoint}>
+	<header class="obs-login-header">
+		<div class="obs-login-header__brand">Tracelab</div>
+		<div class="obs-login-header__subtitle">Observability Panel</div>
+	</header>
+
+	<main class="obs-login-main">
+		<div class="obs-login-card">
+			<h1 class="obs-login-title">Access Required</h1>
+			<p class="obs-login-copy">Enter your credentials to access the observability dashboard.</p>
+
+			<p class="obs-login-error" data-obs-login-error hidden></p>
+
+			<form class="obs-login-form" data-obs-login-form novalidate>
+				<div class="obs-login-field">
+					<label class="obs-login-label" for="obs-username">Username</label>
+					<input
+						class="obs-login-input"
+						type="text"
+						id="obs-username"
+						name="username"
+						data-obs-username
+						autocomplete="username"
+						required
+					/>
+				</div>
+
+				<div class="obs-login-field">
+					<label class="obs-login-label" for="obs-password">Password</label>
+					<input
+						class="obs-login-input"
+						type="password"
+						id="obs-password"
+						name="password"
+						data-obs-password
+						autocomplete="current-password"
+						required
+					/>
+				</div>
+
+				<button class="obs-login-submit" type="submit" data-obs-login-submit>
+					Access Dashboard
+				</button>
+			</form>
+		</div>
+	</main>
+</div>

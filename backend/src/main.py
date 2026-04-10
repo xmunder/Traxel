@@ -9,7 +9,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import get_settings
 from src.routes.health import router as health_router
+from src.routes.observability import router as observability_router
 from src.routes.vectorize import router as vectorize_router
+from src.utils.metrics_collector import MetricsCollector
 from src.utils.observability import (
     JsonLogFormatter,
     RequestContextFilter,
@@ -43,6 +45,11 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def app_lifespan(app: FastAPI):
+        app.state.metrics_collector = MetricsCollector(
+            requests_limit=settings.obs_requests_limit,
+            errors_limit=settings.obs_errors_limit,
+            path_label_limit=settings.obs_path_label_limit,
+        )
         yield
 
     app = FastAPI(
@@ -65,6 +72,9 @@ def create_app() -> FastAPI:
         token = bind_request_id(request_id)
         started_at = perf_counter()
 
+        # Exclude /obs/* traffic from metrics to avoid recursive inflation.
+        is_obs_path = request.url.path.startswith("/obs")
+
         try:
             response = await call_next(request)
         except Exception as exc:
@@ -79,6 +89,17 @@ def create_app() -> FastAPI:
                     "error_detail": str(exc),
                 },
             )
+            if not is_obs_path:
+                collector: MetricsCollector | None = getattr(
+                    app.state, "metrics_collector", None
+                )
+                if collector is not None:
+                    collector.record_error(
+                        method=request.method,
+                        path=request.url.path,
+                        error_type=type(exc).__name__,
+                        error_detail=str(exc),
+                    )
             raise
         finally:
             reset_request_id(token)
@@ -95,10 +116,22 @@ def create_app() -> FastAPI:
                 "duration_ms": int(duration_ms),
             },
         )
+
+        if not is_obs_path:
+            collector = getattr(app.state, "metrics_collector", None)
+            if collector is not None:
+                collector.record_request(
+                    method=request.method,
+                    path=request.url.path,
+                    status_code=response.status_code,
+                    duration_ms=int(duration_ms),
+                )
+
         return response
 
     app.include_router(health_router)
     app.include_router(vectorize_router)
+    app.include_router(observability_router)
     return app
 
 

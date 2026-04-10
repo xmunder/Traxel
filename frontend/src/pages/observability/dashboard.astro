@@ -1,0 +1,34 @@
+---
+import ObsDashboard from '../../components/ObsDashboard.astro';
+import '../../styles/observability.css';
+
+const obsEndpoint = import.meta.env.PUBLIC_OBS_ENDPOINT ?? 'http://127.0.0.1:8000';
+---
+
+<html class="dark" lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<link rel="icon" href="/favicon.ico" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<meta name="generator" content={Astro.generator} />
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+		<title>Tracelab — Observability Dashboard</title>
+	</head>
+	<body class="obs-body">
+		<div
+			data-obs-dashboard
+			data-endpoint={obsEndpoint}
+		>
+			<ObsDashboard />
+		</div>
+
+		<script>
+			import { initObsDashboard } from '../../lib/obs-dashboard';
+
+			initObsDashboard();
+		</script>
+	</body>
+</html>

@@ -8,6 +8,8 @@ services:
       SERVICE_VERSION: ${SERVICE_VERSION:-0.1.0}
       DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      OBS_USERNAME: ${OBS_USERNAME:-}
+      OBS_SECRET: ${OBS_SECRET:-}
     ports:
       - "8000:8000"
     networks:

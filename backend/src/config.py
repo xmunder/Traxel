@@ -30,6 +30,22 @@ class Settings(BaseSettings):
         "https://tracelab.pages.dev",
     )
 
+    # ------------------------------------------------------------------ #
+    # Observability panel                                                  #
+    # ------------------------------------------------------------------ #
+    # Set both OBS_USERNAME and OBS_SECRET in the environment to enable
+    # the /obs/* endpoints.  If either is empty the endpoints return 503.
+    obs_username: str = ""
+    obs_secret: str = ""
+
+    # Maximum entries returned by /obs/requests and /obs/errors.
+    obs_requests_limit: int = 200
+    obs_errors_limit: int = 100
+
+    # Soft cap on distinct path labels tracked in path_counts to prevent
+    # unbounded growth when many unknown paths are hit.
+    obs_path_label_limit: int = 50
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

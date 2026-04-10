@@ -1,0 +1,370 @@
+/* observability.css — styles for the Tracelab Observability Panel.
+   Follows the existing dark theme tokens from vectorizer.css.          */
+
+/* ------------------------------------------------------------------ */
+/* Shared tokens (also declared in vectorizer.css — these are safe    */
+/* overrides scoped to obs pages if vectorizer.css is not loaded)     */
+/* ------------------------------------------------------------------ */
+.obs-body {
+	margin: 0;
+	min-height: 100%;
+	background:
+		linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+		linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+		#0e0e0e;
+	background-size: 40px 40px, 40px 40px, auto;
+	color: #fff;
+	font-family: 'Inter', system-ui, sans-serif;
+	color-scheme: dark;
+}
+
+/* ------------------------------------------------------------------ */
+/* Login page                                                          */
+/* ------------------------------------------------------------------ */
+.obs-login-shell {
+	display: flex;
+	flex-direction: column;
+	min-height: 100vh;
+}
+
+.obs-login-header {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 16px 24px;
+	border-bottom: 1px solid rgba(204, 255, 0, 0.25);
+}
+
+.obs-login-header__brand {
+	font-weight: 700;
+	font-size: 1rem;
+	color: #ccff00;
+}
+
+.obs-login-header__subtitle {
+	font-size: 0.75rem;
+	color: #8f8f8f;
+}
+
+.obs-login-main {
+	flex: 1;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 40px 16px;
+}
+
+.obs-login-card {
+	background: #1a1a1a;
+	border: 1px solid rgba(204, 255, 0, 0.25);
+	padding: 40px;
+	width: 100%;
+	max-width: 400px;
+}
+
+.obs-login-title {
+	font-size: 1.25rem;
+	font-weight: 600;
+	margin: 0 0 8px;
+}
+
+.obs-login-copy {
+	color: #8f8f8f;
+	font-size: 0.875rem;
+	margin: 0 0 24px;
+}
+
+.obs-login-error {
+	background: rgba(255, 80, 80, 0.1);
+	border: 1px solid rgba(255, 80, 80, 0.4);
+	color: #ff8080;
+	padding: 10px 14px;
+	font-size: 0.875rem;
+	margin-bottom: 20px;
+}
+
+.obs-login-form {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.obs-login-field {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.obs-login-label {
+	font-size: 0.75rem;
+	font-weight: 600;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	color: #8f8f8f;
+}
+
+.obs-login-input {
+	background: #121212;
+	border: 1px solid rgba(204, 255, 0, 0.25);
+	color: #fff;
+	padding: 10px 14px;
+	font-size: 0.875rem;
+	outline: none;
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.obs-login-input:focus {
+	border-color: #ccff00;
+}
+
+.obs-login-submit {
+	background: #ccff00;
+	color: #0e0e0e;
+	border: none;
+	padding: 12px 24px;
+	font-size: 0.875rem;
+	font-weight: 700;
+	cursor: pointer;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	transition: opacity 0.15s;
+}
+
+.obs-login-submit:hover {
+	opacity: 0.9;
+}
+
+.obs-login-submit:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+/* ------------------------------------------------------------------ */
+/* Dashboard layout                                                    */
+/* ------------------------------------------------------------------ */
+.obs-dash-shell {
+	display: flex;
+	flex-direction: column;
+	min-height: 100vh;
+}
+
+.obs-dash-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 14px 24px;
+	border-bottom: 1px solid rgba(204, 255, 0, 0.25);
+	gap: 16px;
+	flex-wrap: wrap;
+}
+
+.obs-dash-header__brand {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.obs-dash-header__brand strong {
+	color: #ccff00;
+}
+
+.obs-dash-header__brand span {
+	color: #8f8f8f;
+	font-size: 0.875rem;
+}
+
+.obs-dash-header__actions {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+}
+
+.obs-refresh-label {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 0.8125rem;
+	color: #8f8f8f;
+	cursor: pointer;
+	user-select: none;
+}
+
+.obs-refresh-label input[type='checkbox'] {
+	accent-color: #ccff00;
+}
+
+.obs-logout-btn {
+	background: none;
+	border: 1px solid rgba(204, 255, 0, 0.4);
+	color: #8f8f8f;
+	padding: 6px 14px;
+	font-size: 0.8125rem;
+	cursor: pointer;
+	transition: border-color 0.15s, color 0.15s;
+}
+
+.obs-logout-btn:hover {
+	border-color: #ccff00;
+	color: #ccff00;
+}
+
+/* Error banner */
+.obs-error-banner {
+	background: rgba(255, 80, 80, 0.1);
+	border-bottom: 1px solid rgba(255, 80, 80, 0.4);
+	color: #ff8080;
+	padding: 12px 24px;
+	font-size: 0.875rem;
+}
+
+/* Dashboard main area */
+.obs-dash-main {
+	flex: 1;
+	padding: 24px;
+	display: flex;
+	flex-direction: column;
+	gap: 32px;
+	max-width: 1200px;
+	width: 100%;
+	margin: 0 auto;
+}
+
+/* Sections */
+.obs-section {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.obs-section-title {
+	font-size: 0.75rem;
+	font-weight: 700;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: #ccff00;
+	margin: 0;
+}
+
+/* Summary cards */
+.obs-cards {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+	gap: 12px;
+}
+
+.obs-card {
+	background: #1a1a1a;
+	border: 1px solid rgba(204, 255, 0, 0.25);
+	padding: 20px 16px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.obs-card--error {
+	border-color: rgba(255, 80, 80, 0.35);
+}
+
+.obs-card__label {
+	font-size: 0.75rem;
+	color: #8f8f8f;
+	font-weight: 500;
+}
+
+.obs-card__value {
+	font-size: 1.75rem;
+	font-weight: 700;
+	color: #ccff00;
+	line-height: 1;
+}
+
+.obs-card--error .obs-card__value {
+	color: #ff8080;
+}
+
+.obs-last-updated {
+	font-size: 0.75rem;
+	color: #8f8f8f;
+	margin: 0;
+}
+
+/* Tables */
+.obs-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.8125rem;
+}
+
+.obs-table th {
+	text-align: left;
+	padding: 8px 12px;
+	border-bottom: 1px solid rgba(204, 255, 0, 0.35);
+	font-size: 0.6875rem;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: #ccff00;
+	white-space: nowrap;
+}
+
+.obs-table td {
+	padding: 8px 12px;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+	color: #ccc;
+	vertical-align: top;
+	word-break: break-word;
+}
+
+.obs-table tr:last-child td {
+	border-bottom: none;
+}
+
+.obs-table tr:hover td {
+	background: rgba(204, 255, 0, 0.04);
+}
+
+/* Method badge */
+.obs-method {
+	display: inline-block;
+	padding: 2px 6px;
+	font-size: 0.6875rem;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	border-radius: 2px;
+	text-transform: uppercase;
+}
+
+.obs-method--get    { background: rgba(0, 160, 80, 0.25); color: #6effa1; }
+.obs-method--post   { background: rgba(0, 100, 220, 0.25); color: #7ab8ff; }
+.obs-method--put    { background: rgba(200, 140, 0, 0.25); color: #ffd966; }
+.obs-method--patch  { background: rgba(160, 80, 200, 0.25); color: #d4aaff; }
+.obs-method--delete { background: rgba(200, 60, 60, 0.25); color: #ff9090; }
+
+/* Status badge */
+.obs-status {
+	display: inline-block;
+	padding: 2px 6px;
+	font-size: 0.6875rem;
+	font-weight: 700;
+	border-radius: 2px;
+}
+
+.obs-status--2xx { background: rgba(0, 160, 80, 0.25); color: #6effa1; }
+.obs-status--3xx { background: rgba(0, 100, 220, 0.25); color: #7ab8ff; }
+.obs-status--4xx { background: rgba(200, 140, 0, 0.25); color: #ffd966; }
+.obs-status--5xx { background: rgba(200, 60, 60, 0.25); color: #ff9090; }
+.obs-status--other { background: rgba(120, 120, 120, 0.25); color: #bbb; }
+
+/* Error detail cell */
+.obs-error-detail {
+	max-width: 400px;
+}
+
+/* Empty state */
+.obs-empty {
+	color: #8f8f8f;
+	font-size: 0.875rem;
+	padding: 16px 0;
+	margin: 0;
+}

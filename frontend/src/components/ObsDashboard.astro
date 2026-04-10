@@ -1,0 +1,64 @@
+---
+---
+
+<div class="obs-dash-shell">
+	<header class="obs-dash-header">
+		<div class="obs-dash-header__brand">
+			<strong>Tracelab</strong>
+			<span>Observability Dashboard</span>
+		</div>
+		<div class="obs-dash-header__actions">
+			<label class="obs-refresh-label">
+				<input type="checkbox" data-obs-refresh-toggle />
+				Auto-refresh (30s)
+			</label>
+			<button class="obs-logout-btn" type="button" data-obs-logout>Sign out</button>
+		</div>
+	</header>
+
+	<div class="obs-error-banner" data-obs-error hidden></div>
+
+	<main class="obs-dash-main">
+		<!-- Summary cards -->
+		<section class="obs-section" aria-label="Summary">
+			<h2 class="obs-section-title">Summary</h2>
+			<div class="obs-cards">
+				<article class="obs-card">
+					<span class="obs-card__label">Total Requests</span>
+					<strong class="obs-card__value" data-obs-total-requests>—</strong>
+				</article>
+				<article class="obs-card obs-card--error">
+					<span class="obs-card__label">Total Errors</span>
+					<strong class="obs-card__value" data-obs-total-errors>—</strong>
+				</article>
+				<article class="obs-card">
+					<span class="obs-card__label">Requests Buffer</span>
+					<strong class="obs-card__value" data-obs-buffer-requests>—</strong>
+				</article>
+				<article class="obs-card">
+					<span class="obs-card__label">Errors Buffer</span>
+					<strong class="obs-card__value" data-obs-buffer-errors>—</strong>
+				</article>
+			</div>
+			<p class="obs-last-updated">
+				Last updated: <span data-obs-last-updated>—</span>
+			</p>
+		</section>
+
+		<!-- Recent requests -->
+		<section class="obs-section" aria-label="Recent requests">
+			<h2 class="obs-section-title">Recent Requests</h2>
+			<div data-obs-requests>
+				<p class="obs-empty">Loading...</p>
+			</div>
+		</section>
+
+		<!-- Recent errors -->
+		<section class="obs-section" aria-label="Recent errors">
+			<h2 class="obs-section-title">Recent Errors</h2>
+			<div data-obs-errors>
+				<p class="obs-empty">Loading...</p>
+			</div>
+		</section>
+	</main>
+</div>
