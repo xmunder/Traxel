@@ -49,8 +49,11 @@ class ProcessedImage:
 def process_image(validated_image: ValidatedImage) -> ProcessedImage:
     settings = get_settings()
     normalized_rgb = _normalize_image(validated_image.content)
+    processing_rgb = _resize_for_processing(
+        normalized_rgb, max_dimension=settings.processing_max_dimension
+    )
     quantized_rgb = _quantize_rgb(
-        normalized_rgb, max_colors=settings.default_max_colors
+        processing_rgb, max_colors=settings.default_max_colors
     )
     color_regions = _build_color_regions(quantized_rgb)
     palette = [
@@ -61,13 +64,14 @@ def process_image(validated_image: ValidatedImage) -> ProcessedImage:
         )
         for region in color_regions
     ]
-    height, width = quantized_rgb.shape[:2]
+    original_height, original_width = normalized_rgb.shape[:2]
+    processing_height, processing_width = quantized_rgb.shape[:2]
 
     return ProcessedImage(
-        original_width=width,
-        original_height=height,
-        processing_width=width,
-        processing_height=height,
+        original_width=original_width,
+        original_height=original_height,
+        processing_width=processing_width,
+        processing_height=processing_height,
         normalized_rgb=quantized_rgb,
         palette=palette,
         color_regions=color_regions,
@@ -88,6 +92,24 @@ def _normalize_image(content: bytes) -> np.ndarray:
             image = image.convert("RGB")
 
     return np.array(image, dtype=np.uint8)
+
+
+def _resize_for_processing(rgb_image: np.ndarray, *, max_dimension: int) -> np.ndarray:
+    height, width = rgb_image.shape[:2]
+    longest_side = max(width, height)
+
+    if longest_side <= max_dimension:
+        return rgb_image.copy()
+
+    scale = max_dimension / float(longest_side)
+    resized_width = max(1, int(round(width * scale)))
+    resized_height = max(1, int(round(height * scale)))
+
+    return cv2.resize(
+        rgb_image,
+        (resized_width, resized_height),
+        interpolation=cv2.INTER_AREA,
+    )
 
 
 def _quantize_rgb(rgb_image: np.ndarray, *, max_colors: int) -> np.ndarray:

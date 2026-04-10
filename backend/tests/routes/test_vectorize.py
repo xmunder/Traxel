@@ -223,3 +223,35 @@ def test_post_vectorize_logs_unexpected_errors_with_request_context(
     assert error_record.filename == "vectorize.py"
     assert error_record.error_type == "RuntimeError"
     assert error_record.error_detail == "boom"
+
+
+def test_post_vectorize_svg_preserves_original_image_dimensions_when_downscaled(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    """SVG width/height/viewBox must match the uploaded image even when backend
+    internally downscales for processing."""
+    from src.services import image_processor
+    from tests.fixtures.image_factory import create_image_bytes
+
+    # Force a very low processing limit so the 64x64 image is always downscaled
+    settings = image_processor.get_settings().model_copy(
+        update={"processing_max_dimension": 16}
+    )
+    monkeypatch.setattr(image_processor, "get_settings", lambda: settings)
+
+    image_64 = create_image_bytes("PNG", size=(64, 64))
+    response = client.post(
+        "/vectorize",
+        files={"image": ("logo.png", image_64, "image/png")},
+    )
+
+    assert response.status_code == 200
+    from xml.etree import ElementTree
+
+    payload = response.json()
+    root = ElementTree.fromstring(payload["svg"])
+
+    assert root.attrib["width"] == "64"
+    assert root.attrib["height"] == "64"
+    assert root.attrib["viewBox"] == "0 0 64 64"

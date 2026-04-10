@@ -1,15 +1,16 @@
 # Frontend - Vectorizer
 
-Frontend Astro del MVP. Su trabajo es simple: recibir una imagen en `/`, enviarla al backend `POST /vectorize`, guardar el resultado de la sesión en `sessionStorage` y mostrar la comparación en `/workspace`.
+Frontend Astro del MVP. Su trabajo es simple: recibir una imagen en `/`, enviarla al backend `POST /vectorize`, persistir el resultado en IndexedDB y mostrar la comparación en `/workspace`.
 
 ## Flujo principal
 
 1. `/` renderiza la landing + `UploadZone`.
 2. `src/lib/vectorizer-app.ts` valida el archivo en cliente.
 3. Si el archivo es válido, hace `fetch` al endpoint configurado en `PUBLIC_VECTORIZE_ENDPOINT`.
-4. Si el backend responde OK, guarda el resultado en `sessionStorage` bajo la key `vectorizer.workspace-result`.
-5. Luego navega a `/workspace`.
-6. `/workspace` lee esa sesión, sanitiza el SVG, renderiza original + resultado y habilita la descarga.
+4. Si el backend responde OK, intenta guardar el resultado en IndexedDB.
+   - Si IndexedDB **funciona** → navega a `/workspace`.
+   - Si IndexedDB **falla** (incógnito, Safari restringido, cuota llena) → descarga automáticamente el SVG y el usuario permanece en `/`.
+5. `/workspace` lee la entrada de IndexedDB, sanitiza el SVG, renderiza original + resultado y habilita la descarga.
 
 ## Estructura útil
 
@@ -20,7 +21,7 @@ frontend/
 │   │   ├── UploadZone.astro      # input file, dropzone, estados y errores
 │   │   └── Preview.astro         # layout de comparación y métricas
 │   ├── lib/
-│   │   └── vectorizer-app.ts     # lógica runtime: upload, fetch, sessionStorage, navegación
+│   │   └── vectorizer-app.ts     # lógica runtime: upload, fetch, IndexedDB, navegación
 │   ├── pages/
 │   │   ├── index.astro           # pantalla de entrada
 │   │   └── workspace.astro       # pantalla de comparación y descarga
@@ -43,19 +44,20 @@ frontend/
   - valida tamaño/extensión/MIME,
   - hace la request al backend,
   - mapea errores de backend a mensajes de UI,
-  - persiste y limpia la sesión,
-  - resuelve la navegación `/` -> `/workspace`,
+  - persiste el resultado en IndexedDB,
+  - si IndexedDB falla → descarga el SVG automáticamente y permanece en `/`,
+  - si IndexedDB funciona → navega a `/workspace`,
   - sanitiza el SVG antes de insertarlo en DOM.
 - `src/pages/workspace.astro`: shell del workspace.
 - `src/components/Preview.astro`: contenedores visuales para preview, métricas y descarga.
 
-## Estado y `sessionStorage`
+## Estado e IndexedDB
 
 La app no usa store global. El estado runtime vive en `src/lib/vectorizer-app.ts`.
 
 - Estado visual: `idle | uploading | success | error`
-- Persistencia temporal: `sessionStorage`
-- Key: `vectorizer.workspace-result`
+- Persistencia durable: IndexedDB (DB `vectorizer`, store `workspace`)
+- Key: `current`
 
 Lo que se guarda:
 
@@ -65,7 +67,7 @@ Lo que se guarda:
 - metadata (`colors_detected`, `paths_generated`, `duration_ms`),
 - timestamp de guardado.
 
-Si la sesión no existe, `/workspace` redirige a `/` o muestra estado vacío según el markup disponible.
+Si IndexedDB no está disponible, el SVG se descarga automáticamente y el usuario permanece en `/`. Si al abrir `/workspace` no existe la entrada en IndexedDB, redirige a `/` o muestra estado vacío según el markup disponible.
 
 ## Cómo correrlo localmente
 
@@ -118,6 +120,6 @@ pnpm test:e2e
 
 ## Notas prácticas
 
-- El warning de “optimizado para logos e íconos” es parte del flujo actual y siempre se muestra en upload.
+- El warning de "optimizado para logos e íconos" es parte del flujo actual y siempre se muestra en upload.
 - No hay configuración avanzada expuesta en UI en este MVP.
-- No existe todavía un store compartido ni persistencia durable; la sesión vive solo mientras dure la pestaña.
+- La persistencia es durable (IndexedDB) y sobrevive recargas del navegador. Si el navegador no soporta IndexedDB (incógnito estricto, Safari con restricciones de privacidad, cuota llena), el SVG se descarga automáticamente como fallback y el usuario permanece en `/`.

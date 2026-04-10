@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     otel_exporter_otlp_headers: str = ""
     otel_exporter_otlp_insecure: bool = True
     max_file_size: int = 5 * 1024 * 1024
+    processing_max_dimension: int = 1024
     default_max_colors: int = 8
     allowed_extensions: tuple[str, ...] = ("png", "jpg", "jpeg", "webp")
     allowed_content_types: tuple[str, ...] = ("image/png", "image/jpeg", "image/webp")

@@ -32,9 +32,18 @@ class VectorizationResult:
 
 def vectorize_processed_image(processed_image: ProcessedImage) -> VectorizationResult:
     paths: list[VectorPath] = []
+    scale_x = processed_image.original_width / processed_image.processing_width
+    scale_y = processed_image.original_height / processed_image.processing_height
 
     for region in processed_image.color_regions:
-        paths.extend(_vectorize_region(region.mask, region.color_hex))
+        paths.extend(
+            _vectorize_region(
+                region.mask,
+                region.color_hex,
+                scale_x=scale_x,
+                scale_y=scale_y,
+            )
+        )
 
     return VectorizationResult(
         width=processed_image.original_width,
@@ -43,7 +52,13 @@ def vectorize_processed_image(processed_image: ProcessedImage) -> VectorizationR
     )
 
 
-def _vectorize_region(mask: np.ndarray, color_hex: str) -> list[VectorPath]:
+def _vectorize_region(
+    mask: np.ndarray,
+    color_hex: str,
+    *,
+    scale_x: float,
+    scale_y: float,
+) -> list[VectorPath]:
     contour_mask = np.ascontiguousarray(mask.astype(np.uint8))
     contours, hierarchy = cv2.findContours(
         contour_mask,
@@ -66,13 +81,19 @@ def _vectorize_region(mask: np.ndarray, color_hex: str) -> list[VectorPath]:
         if area < MIN_PATH_AREA:
             continue
 
-        segments = [_contour_to_svg_path(contour)]
+        segments = [_contour_to_svg_path(contour, scale_x=scale_x, scale_y=scale_y)]
         child_index = int(contour_tree[index][2])
 
         while child_index != -1:
             child_contour = contours[child_index]
             if float(cv2.contourArea(child_contour)) >= SVG_EPSILON:
-                segments.append(_contour_to_svg_path(child_contour))
+                segments.append(
+                    _contour_to_svg_path(
+                        child_contour,
+                        scale_x=scale_x,
+                        scale_y=scale_y,
+                    )
+                )
             child_index = int(contour_tree[child_index][0])
 
         path_data = " ".join(segment for segment in segments if segment)
@@ -84,17 +105,17 @@ def _vectorize_region(mask: np.ndarray, color_hex: str) -> list[VectorPath]:
     return paths
 
 
-def _contour_to_svg_path(contour: np.ndarray) -> str:
+def _contour_to_svg_path(contour: np.ndarray, *, scale_x: float, scale_y: float) -> str:
     points = contour.reshape(-1, 2)
     if len(points) < 3:
         return ""
 
     commands = [
-        f"M {_format_coordinate(points[0][0])} {_format_coordinate(points[0][1])}"
+        f"M {_format_coordinate(points[0][0] * scale_x)} {_format_coordinate(points[0][1] * scale_y)}"
     ]
     for point in points[1:]:
         commands.append(
-            f"L {_format_coordinate(point[0])} {_format_coordinate(point[1])}"
+            f"L {_format_coordinate(point[0] * scale_x)} {_format_coordinate(point[1] * scale_y)}"
         )
     commands.append("Z")
     return " ".join(commands)
