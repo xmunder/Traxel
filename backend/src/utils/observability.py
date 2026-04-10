@@ -25,12 +25,6 @@ STRUCTURED_LOG_FIELDS = (
 )
 
 
-EXCLUDED_OTEL_LOGGER_PREFIXES = (
-    "opentelemetry",
-    "grpc",
-)
-
-
 def build_request_id(candidate: str | None) -> str:
     if candidate:
         normalized = candidate.strip()
@@ -60,11 +54,6 @@ class RequestContextFilter(logging.Filter):
                 setattr(record, field, None)
 
         return True
-
-
-class TelemetryLogExclusionFilter(logging.Filter):
-    def filter(self, record: logging.LogRecord) -> bool:
-        return not record.name.startswith(EXCLUDED_OTEL_LOGGER_PREFIXES)
 
 
 class JsonLogFormatter(logging.Formatter):

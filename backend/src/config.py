@@ -17,11 +17,6 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     request_id_header: str = "X-Request-ID"
     process_time_header: str = "X-Process-Time-MS"
-    telemetry_enabled: bool = True
-    otel_exporter_protocol: Literal["grpc", "http/protobuf"] = "grpc"
-    otel_exporter_otlp_endpoint: str | None = None
-    otel_exporter_otlp_headers: str = ""
-    otel_exporter_otlp_insecure: bool = True
     max_file_size: int = 5 * 1024 * 1024
     processing_max_dimension: int = 1024
     default_max_colors: int = 8
