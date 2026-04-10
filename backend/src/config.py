@@ -32,6 +32,7 @@ class Settings(BaseSettings):
         "http://127.0.0.1:4321",
         "http://localhost:4411",
         "http://127.0.0.1:4411",
+        "https://tracelab.pages.dev",
     )
 
 
