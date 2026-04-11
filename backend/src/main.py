@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 import logging
+import os
 from time import perf_counter
 
 from fastapi import FastAPI
@@ -12,6 +14,7 @@ from src.routes.health import router as health_router
 from src.routes.observability import router as observability_router
 from src.routes.vectorize import router as vectorize_router
 from src.utils.metrics_collector import MetricsCollector
+from src.utils.obs_store import ObsStore
 from src.utils.observability import (
     JsonLogFormatter,
     RequestContextFilter,
@@ -45,12 +48,58 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def app_lifespan(app: FastAPI):
-        app.state.metrics_collector = MetricsCollector(
+        collector = MetricsCollector(
             requests_limit=settings.obs_requests_limit,
             errors_limit=settings.obs_errors_limit,
             path_label_limit=settings.obs_path_label_limit,
         )
+        app.state.metrics_collector = collector
+
+        obs_store: ObsStore | None = None
+        flush_task: asyncio.Task | None = None
+        prune_task: asyncio.Task | None = None
+
+        if settings.obs_db_path:
+            # Ensure data directory exists
+            data_dir = os.path.dirname(settings.obs_db_path)
+            if data_dir:
+                os.makedirs(data_dir, exist_ok=True)
+
+            obs_store = ObsStore(
+                db_path=settings.obs_db_path,
+                flush_interval_s=settings.obs_flush_interval_s,
+                flush_batch_size=settings.obs_flush_batch_size,
+            )
+            await obs_store.init_db()
+            await obs_store.prune(retention_days=settings.obs_retention_days)
+
+            # Wire the store into the collector
+            collector.obs_store = obs_store
+            app.state.obs_store = obs_store
+
+            # Start background workers
+            flush_task = asyncio.create_task(obs_store._flush_worker())
+
+            async def _daily_prune():
+                while True:
+                    await asyncio.sleep(86400)
+                    await obs_store.prune(retention_days=settings.obs_retention_days)
+
+            prune_task = asyncio.create_task(_daily_prune())
+
         yield
+
+        # Shutdown — drain and close
+        for task in (flush_task, prune_task):
+            if task is not None:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+        if obs_store is not None:
+            await obs_store.close()
 
     app = FastAPI(
         title="Vectorizer Backend",

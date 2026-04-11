@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import threading
 from collections import deque
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from src.utils.obs_store import ObsStore
 
 # Paths we actually care about for aggregation.
 # Keeps path_counts bounded — no unbounded growth from arbitrary paths.
@@ -85,6 +89,10 @@ class MetricsCollector:
 
     Thread-safe via a single ``threading.Lock``.  Uses ``deque(maxlen=N)``
     for bounded ring buffers so memory usage stays predictable.
+
+    When ``obs_store`` is set (an :class:`ObsStore` instance), each
+    :meth:`record_request` call also enqueues the row for SQLite persistence.
+    Errors always stay in-memory only (low volume, not queried by timeseries).
     """
 
     def __init__(
@@ -106,6 +114,9 @@ class MetricsCollector:
         self._total_errors: int = 0
         self._status_counts: dict[int, int] = {}
         self._path_counts: dict[str, int] = {}
+
+        # Optional persistence adapter — set after construction by lifespan.
+        self.obs_store: ObsStore | None = None
 
     # ------------------------------------------------------------------
     # Write path (called from middleware)
@@ -137,6 +148,47 @@ class MetricsCollector:
                 self._status_counts.get(status_code, 0) + 1
             )
             self._path_counts[label] = self._path_counts.get(label, 0) + 1
+
+        # Async persistence — fire-and-forget without blocking the request path.
+        # Uses get_running_loop() which only succeeds when called from within a
+        # running event loop (e.g. inside an ASGI request cycle). If no loop is
+        # running (e.g. sync tests), falls back to run_until_complete so the
+        # enqueue is still exercised and tests can assert on it.
+        if self.obs_store is not None:
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(
+                    self.obs_store.enqueue(
+                        timestamp=timestamp,
+                        method=method,
+                        path=path,
+                        status_code=status_code,
+                        duration_ms=duration_ms,
+                    )
+                )
+            except RuntimeError:
+                # No running loop — run synchronously (test / CLI context).
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_closed():
+                        raise RuntimeError("closed")
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                try:
+                    loop.run_until_complete(
+                        self.obs_store.enqueue(
+                            timestamp=timestamp,
+                            method=method,
+                            path=path,
+                            status_code=status_code,
+                            duration_ms=duration_ms,
+                        )
+                    )
+                except Exception:
+                    pass  # Never let persistence errors affect the request path
+            except Exception:
+                pass  # Never let persistence errors affect the request path
 
     def record_error(
         self,

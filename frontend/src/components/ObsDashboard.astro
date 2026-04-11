@@ -8,9 +8,45 @@
 			<span>Observability Dashboard</span>
 		</div>
 		<div class="obs-dash-header__actions">
-			<label class="obs-refresh-label">
-				<input type="checkbox" data-obs-refresh-toggle />
-				Auto-refresh (30s)
+			<label class="obs-filter-label">
+				Range
+				<select class="obs-select" data-obs-range-select>
+					<option value="365d">Year</option>
+					<option value="30d">Month</option>
+					<option value="1d">Day</option>
+					<option value="12h" selected>12h</option>
+					<option value="6h">6h</option>
+					<option value="3h">3h</option>
+					<option value="1h">1h</option>
+					<option value="30m">30m</option>
+					<option value="10m">10m</option>
+					<option value="5m">5m</option>
+					<option value="1m">1m</option>
+				</select>
+			</label>
+			<label class="obs-filter-label">
+				Status
+				<select class="obs-select" data-obs-status-select>
+					<option value="all" selected>All</option>
+				</select>
+			</label>
+			<label class="obs-filter-label">
+				Refresh
+				<select class="obs-select" data-obs-refresh-select>
+					<option value="0" selected>Off</option>
+					<option value="5000">5s</option>
+					<option value="10000">10s</option>
+					<option value="30000">30s</option>
+					<option value="60000">1min</option>
+				</select>
+			</label>
+			<label class="obs-filter-label">
+				Limit
+				<select class="obs-select" data-obs-limit-select>
+					<option value="20" selected>20</option>
+					<option value="100">100</option>
+					<option value="200">200</option>
+				</select>
 			</label>
 			<button class="obs-logout-btn" type="button" data-obs-logout>Sign out</button>
 		</div>
@@ -19,6 +55,18 @@
 	<div class="obs-error-banner" data-obs-error hidden></div>
 
 	<main class="obs-dash-main">
+		<!-- Timeseries chart -->
+		<section class="obs-section" aria-label="Traffic chart">
+			<h2 class="obs-section-title">Request Traffic</h2>
+			<div class="obs-chart-container">
+				<div class="obs-chart-brush" data-obs-chart-brush hidden></div>
+				<canvas data-obs-chart></canvas>
+			</div>
+			<div class="obs-chart-actions">
+				<button class="obs-chart-reset-btn" type="button" data-obs-chart-reset hidden>Reset Zoom</button>
+			</div>
+		</section>
+
 		<!-- Summary cards -->
 		<section class="obs-section" aria-label="Summary">
 			<h2 class="obs-section-title">Summary</h2>

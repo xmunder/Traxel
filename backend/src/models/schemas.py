@@ -1,4 +1,19 @@
+from http import HTTPStatus
+
 from pydantic import BaseModel, Field
+
+
+# ------------------------------------------------------------------ #
+# Helpers                                                              #
+# ------------------------------------------------------------------ #
+
+
+def status_message(code: int) -> str:
+    """Return the HTTP reason phrase for *code*, or '' if unknown."""
+    try:
+        return HTTPStatus(code).phrase
+    except ValueError:
+        return ""
 
 
 # ------------------------------------------------------------------ #
@@ -13,6 +28,8 @@ class ObsSummaryResponse(BaseModel):
     path_counts: dict[str, int]
     requests_buffer_size: int = Field(ge=0)
     errors_buffer_size: int = Field(ge=0)
+    # Persisted total (from SQLite) when store is available; None otherwise.
+    persisted_total: int | None = None
 
 
 class ObsRequestItem(BaseModel):
@@ -21,6 +38,7 @@ class ObsRequestItem(BaseModel):
     path: str
     status_code: int
     duration_ms: int
+    message: str = ""
 
 
 class ObsRequestsResponse(BaseModel):
@@ -38,6 +56,23 @@ class ObsErrorItem(BaseModel):
 
 class ObsErrorsResponse(BaseModel):
     items: list[ObsErrorItem]
+    total: int = Field(ge=0)
+
+
+class ObsTimeseriesBucket(BaseModel):
+    bucket: str
+    count: int = Field(ge=0)
+    status_counts: dict[str, int] = Field(default_factory=dict)
+    count_2xx: int = Field(default=0, ge=0)
+    count_3xx: int = Field(default=0, ge=0)
+    count_4xx: int = Field(default=0, ge=0)
+    count_5xx: int = Field(default=0, ge=0)
+
+
+class ObsTimeseriesResponse(BaseModel):
+    buckets: list[ObsTimeseriesBucket]
+    range: str
+    bucket_width: str
     total: int = Field(ge=0)
 
 

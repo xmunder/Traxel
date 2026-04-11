@@ -10,8 +10,12 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       OBS_USERNAME: ${OBS_USERNAME:-}
       OBS_SECRET: ${OBS_SECRET:-}
+      OBS_DB_PATH: ${OBS_DB_PATH:-data/obs.db}
+      OBS_RETENTION_DAYS: ${OBS_RETENTION_DAYS:-30}
     ports:
       - "8000:8000"
+    volumes:
+      - obs_data:/app/data
     networks:
       - vectorizer-app
 
@@ -32,3 +36,6 @@ services:
 networks:
   vectorizer-app:
     name: ${VECTORIZER_NETWORK_NAME:-vectorizer-app}
+
+volumes:
+  obs_data:

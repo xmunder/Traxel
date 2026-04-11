@@ -477,7 +477,7 @@ describe('obs-dashboard: fetch data and render', () => {
 
 	const REQUESTS_RESPONSE = {
 		items: [
-			{ timestamp: '2026-01-01T00:00:00Z', method: 'GET', path: '/health', status_code: 200, duration_ms: 5 },
+			{ timestamp: '2026-01-01T00:00:00Z', method: 'GET', path: '/health', status_code: 200, duration_ms: 5, message: 'OK' },
 		],
 		total: 1,
 	};
@@ -538,6 +538,33 @@ describe('obs-dashboard: fetch data and render', () => {
 			expect(table).not.toBeNull();
 			const rows = table?.querySelectorAll('tbody tr');
 			expect(rows?.length).toBeGreaterThanOrEqual(1);
+		} finally {
+			cleanup();
+		}
+	});
+
+	test('requests table includes Message column with HTTP reason phrase', async () => {
+		const { dom, cleanup } = setupDom(DASHBOARD_HTML, { username: 'admin', password: 'pass' });
+		const fetchMock = buildFetch({ '/obs/summary': SUMMARY, '/obs/requests': REQUESTS_RESPONSE, '/obs/errors': ERRORS_RESPONSE });
+		Object.assign(globalThis, { fetch: fetchMock });
+
+		try {
+			const { initObsDashboard } = await import('../src/lib/obs-dashboard');
+			initObsDashboard();
+
+			await new Promise((r) => setTimeout(r, 50));
+
+			const table = dom.window.document.querySelector('[data-obs-requests] table');
+			expect(table).not.toBeNull();
+
+			// Verify header includes Message column
+			const headers = table?.querySelectorAll('thead th');
+			const headerTexts = Array.from(headers ?? []).map((h) => h.textContent);
+			expect(headerTexts).toContain('Message');
+
+			// Verify first row contains the message value "OK"
+			const firstRow = table?.querySelector('tbody tr');
+			expect(firstRow?.innerHTML).toContain('OK');
 		} finally {
 			cleanup();
 		}
@@ -623,6 +650,1044 @@ describe('obs-dashboard: fetch data and render', () => {
 
 			expect(sessionStorage.getItem('obs-creds')).toBeNull();
 			expect(navigatedTo.value).toBe('/observability');
+		} finally {
+			cleanup();
+		}
+	});
+});
+
+// ─── obs-chart tests ───────────────────────────────────────────────
+
+// vi.mock is hoisted — use vi.hoisted() to share mutable refs between the
+// factory closure and individual test bodies.
+const chartMocks = vi.hoisted(() => ({
+	updateFn: vi.fn(),
+	destroyFn: vi.fn(),
+}));
+
+vi.mock('chart.js/auto', () => {
+	const Chart = vi.fn().mockImplementation(function(this: Record<string, unknown>, _canvas: unknown, _config: unknown) {
+		this.data = { labels: [] as string[], datasets: [{ data: [] as number[] }] };
+		this.update = chartMocks.updateFn;
+		this.destroy = chartMocks.destroyFn;
+	});
+	return { default: Chart };
+});
+
+describe('obs-chart: Chart.js wrapper', () => {
+	beforeEach(() => {
+		chartMocks.updateFn.mockReset();
+		chartMocks.destroyFn.mockReset();
+	});
+
+	afterEach(() => {
+		vi.resetModules();
+	});
+
+	function buildCanvasMock() {
+		const ctx = {
+			clearRect: vi.fn(),
+			fillRect: vi.fn(),
+			canvas: {} as HTMLCanvasElement,
+		};
+		const canvas = {
+			getContext: vi.fn().mockReturnValue(ctx),
+			width: 800,
+			height: 300,
+		} as unknown as HTMLCanvasElement;
+		return canvas;
+	}
+
+	test('initObsChart returns a chart instance', async () => {
+		const canvas = buildCanvasMock();
+		const { initObsChart } = await import('../src/lib/obs-chart');
+		const chart = initObsChart(canvas);
+
+		expect(chart).toBeDefined();
+		expect(typeof chart.update).toBe('function');
+		expect(typeof chart.destroy).toBe('function');
+	});
+
+	test('updateObsChart sets labels and data', async () => {
+		const canvas = buildCanvasMock();
+		const { initObsChart, updateObsChart } = await import('../src/lib/obs-chart');
+		const chart = initObsChart(canvas);
+
+		updateObsChart(chart, [
+			{ bucket: '2026-04-10T12:00', count: 5 },
+			{ bucket: '2026-04-10T12:01', count: 3 },
+		]);
+
+		expect((chart as unknown as { data: { labels: string[] } }).data.labels).toHaveLength(2);
+		expect((chart as unknown as { data: { datasets: Array<{ data: number[] }> } }).data.datasets[0].data).toEqual([5, 3]);
+		expect(chartMocks.updateFn).toHaveBeenCalledOnce();
+	});
+
+	test('updateObsChart with empty buckets clears the chart', async () => {
+		const canvas = buildCanvasMock();
+		const { initObsChart, updateObsChart } = await import('../src/lib/obs-chart');
+		const chart = initObsChart(canvas);
+
+		updateObsChart(chart, []);
+
+		expect((chart as unknown as { data: { labels: string[] } }).data.labels).toHaveLength(0);
+		expect((chart as unknown as { data: { datasets: Array<{ data: number[] }> } }).data.datasets[0].data).toHaveLength(0);
+		expect(chartMocks.updateFn).toHaveBeenCalledOnce();
+	});
+});
+
+// ─── obs-dashboard: filter selects and auto-refresh select ────────
+
+describe('obs-dashboard: filter selects and auto-refresh select', () => {
+	const DASHBOARD_WITH_FILTERS_HTML = `
+		<html><body>
+			<div data-obs-dashboard data-endpoint="http://api.test">
+				<div data-obs-error hidden></div>
+				<canvas data-obs-chart></canvas>
+				<span data-obs-total-requests>—</span>
+				<span data-obs-total-errors>—</span>
+				<span data-obs-buffer-requests>—</span>
+				<span data-obs-buffer-errors>—</span>
+				<span data-obs-last-updated>—</span>
+				<select data-obs-range-select>
+					<option value="12h" selected>12h</option>
+					<option value="1h">1h</option>
+					<option value="30m">30m</option>
+				</select>
+				<select data-obs-status-select>
+					<option value="all" selected>All</option>
+				</select>
+				<select data-obs-refresh-select>
+					<option value="0" selected>Off</option>
+					<option value="5000">5s</option>
+					<option value="30000">30s</option>
+				</select>
+				<div data-obs-requests></div>
+				<div data-obs-errors></div>
+				<button data-obs-logout>Logout</button>
+			</div>
+		</body></html>
+	`;
+
+	const SUMMARY = {
+		total_requests: 10,
+		total_errors: 0,
+		status_counts: { '200': 10, '404': 2, '500': 1 },
+		path_counts: { '/health': 10 },
+		requests_buffer_size: 10,
+		errors_buffer_size: 0,
+		persisted_total: 10,
+	};
+
+	const TIMESERIES_RESPONSE = {
+		buckets: [{ bucket: '2026-04-10T12:00', count: 13, status_counts: { '200': 10, '404': 2, '500': 1 } }],
+		range: '12h',
+		bucket_width: '1h',
+		total: 13,
+	};
+
+	const REQUESTS_RESPONSE = { items: [], total: 0 };
+	const ERRORS_RESPONSE = { items: [], total: 0 };
+
+	function buildFetch(responses: Record<string, unknown>) {
+		return vi.fn(async (url: string) => {
+			const key = Object.keys(responses).find((k) => url.includes(k));
+			if (!key) return new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } });
+			return new Response(JSON.stringify(responses[key]), {
+				status: 200,
+				headers: { 'content-type': 'application/json' },
+			});
+		});
+	}
+
+	afterEach(() => {
+		vi.resetModules();
+	});
+
+	test('initObsDashboard fetches timeseries when obs-chart canvas is present', async () => {
+		const { dom, cleanup } = setupDom(DASHBOARD_WITH_FILTERS_HTML, { username: 'admin', password: 'pass' });
+		const fetchMock = buildFetch({
+			'/obs/summary': SUMMARY,
+			'/obs/timeseries': TIMESERIES_RESPONSE,
+			'/obs/requests': REQUESTS_RESPONSE,
+			'/obs/errors': ERRORS_RESPONSE,
+		});
+		Object.assign(globalThis, { fetch: fetchMock });
+
+		try {
+			const { initObsDashboard } = await import('../src/lib/obs-dashboard');
+			initObsDashboard();
+
+			await new Promise((r) => setTimeout(r, 50));
+
+			const timeseriesCall = fetchMock.mock.calls.find(
+				(call: unknown[]) => typeof call[0] === 'string' && (call[0] as string).includes('/obs/timeseries'),
+			);
+			expect(timeseriesCall).toBeDefined();
+		} finally {
+			cleanup();
+		}
+	});
+
+	test('range select change triggers re-fetch with new range param', async () => {
+		const { dom, cleanup } = setupDom(DASHBOARD_WITH_FILTERS_HTML, { username: 'admin', password: 'pass' });
+		const fetchMock = buildFetch({
+			'/obs/summary': SUMMARY,
+			'/obs/timeseries': TIMESERIES_RESPONSE,
+			'/obs/requests': REQUESTS_RESPONSE,
+			'/obs/errors': ERRORS_RESPONSE,
+		});
+		Object.assign(globalThis, { fetch: fetchMock });
+
+		try {
+			const { initObsDashboard } = await import('../src/lib/obs-dashboard');
+			initObsDashboard();
+
+			await new Promise((r) => setTimeout(r, 50));
+
+			fetchMock.mockClear();
+
+			// Change range to 1h
+			const rangeSelect = dom.window.document.querySelector<HTMLSelectElement>('[data-obs-range-select]');
+			rangeSelect!.value = '1h';
+			rangeSelect!.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+
+			await new Promise((r) => setTimeout(r, 50));
+
+			const summaryCall = fetchMock.mock.calls.find(
+				(call: unknown[]) => typeof call[0] === 'string' && (call[0] as string).includes('/obs/summary'),
+			);
+			expect(summaryCall).toBeDefined();
+			expect(summaryCall![0]).toContain('range=1h');
+		} finally {
+			cleanup();
+		}
+	});
+
+	test('status select change triggers re-fetch with new status param', async () => {
+		const { dom, cleanup } = setupDom(DASHBOARD_WITH_FILTERS_HTML, { username: 'admin', password: 'pass' });
+		const fetchMock = buildFetch({
+			'/obs/summary': SUMMARY,
+			'/obs/timeseries': TIMESERIES_RESPONSE,
+			'/obs/requests': REQUESTS_RESPONSE,
+			'/obs/errors': ERRORS_RESPONSE,
+		});
+		Object.assign(globalThis, { fetch: fetchMock });
+
+		try {
+			const { initObsDashboard } = await import('../src/lib/obs-dashboard');
+			initObsDashboard();
+
+			await new Promise((r) => setTimeout(r, 50));
+
+			fetchMock.mockClear();
+
+		const statusSelect = dom.window.document.querySelector<HTMLSelectElement>('[data-obs-status-select]');
+		expect(Array.from(statusSelect!.options).map((opt) => opt.value)).toEqual(['all', '200', '404', '500']);
+		statusSelect!.value = '500';
+		statusSelect!.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+
+			await new Promise((r) => setTimeout(r, 50));
+
+			const summaryCall = fetchMock.mock.calls.find(
+				(call: unknown[]) => typeof call[0] === 'string' && (call[0] as string).includes('/obs/summary'),
+			);
+			expect(summaryCall).toBeDefined();
+			expect(summaryCall![0]).toContain('status=500');
+		} finally {
+			cleanup();
+		}
+	});
+
+	test('auto-refresh select with 0 disables auto-refresh', async () => {
+		const { dom, cleanup } = setupDom(DASHBOARD_WITH_FILTERS_HTML, { username: 'admin', password: 'pass' });
+		const fetchMock = buildFetch({
+			'/obs/summary': SUMMARY,
+			'/obs/timeseries': TIMESERIES_RESPONSE,
+			'/obs/requests': REQUESTS_RESPONSE,
+			'/obs/errors': ERRORS_RESPONSE,
+		});
+		Object.assign(globalThis, { fetch: fetchMock });
+
+		try {
+			const { initObsDashboard } = await import('../src/lib/obs-dashboard');
+			initObsDashboard();
+
+			await new Promise((r) => setTimeout(r, 50));
+
+			fetchMock.mockClear();
+
+			// Select 0 = off
+			const refreshSelect = dom.window.document.querySelector<HTMLSelectElement>('[data-obs-refresh-select]');
+			refreshSelect!.value = '0';
+			refreshSelect!.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+
+			// Should not fetch again automatically (no timer)
+			await new Promise((r) => setTimeout(r, 100));
+			expect(fetchMock).not.toHaveBeenCalled();
+		} finally {
+			cleanup();
+		}
+	});
+
+	test('combined range + status filters send both params', async () => {
+		const { dom, cleanup } = setupDom(DASHBOARD_WITH_FILTERS_HTML, { username: 'admin', password: 'pass' });
+		const fetchMock = buildFetch({
+			'/obs/summary': SUMMARY,
+			'/obs/timeseries': TIMESERIES_RESPONSE,
+			'/obs/requests': REQUESTS_RESPONSE,
+			'/obs/errors': ERRORS_RESPONSE,
+		});
+		Object.assign(globalThis, { fetch: fetchMock });
+
+		try {
+			const { initObsDashboard } = await import('../src/lib/obs-dashboard');
+			initObsDashboard();
+
+			await new Promise((r) => setTimeout(r, 50));
+
+			// Set both filters
+			const rangeSelect = dom.window.document.querySelector<HTMLSelectElement>('[data-obs-range-select]');
+			const statusSelect = dom.window.document.querySelector<HTMLSelectElement>('[data-obs-status-select]');
+
+			rangeSelect!.value = '30m';
+			statusSelect!.value = '500';
+
+			fetchMock.mockClear();
+
+			// Trigger change on status (range already set)
+			statusSelect!.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+
+			await new Promise((r) => setTimeout(r, 50));
+
+			const summaryCall = fetchMock.mock.calls.find(
+				(call: unknown[]) => typeof call[0] === 'string' && (call[0] as string).includes('/obs/summary'),
+			);
+			expect(summaryCall).toBeDefined();
+			expect(summaryCall![0]).toContain('range=30m');
+			expect(summaryCall![0]).toContain('status=500');
+		} finally {
+			cleanup();
+		}
+	});
+
+	test('timeseries data is included in fetch when chart canvas is present', async () => {
+		const { dom, cleanup } = setupDom(DASHBOARD_WITH_FILTERS_HTML, { username: 'admin', password: 'pass' });
+		const fetchMock = buildFetch({
+			'/obs/summary': SUMMARY,
+			'/obs/timeseries': TIMESERIES_RESPONSE,
+			'/obs/requests': REQUESTS_RESPONSE,
+			'/obs/errors': ERRORS_RESPONSE,
+		});
+		Object.assign(globalThis, { fetch: fetchMock });
+
+		try {
+			const { initObsDashboard } = await import('../src/lib/obs-dashboard');
+			initObsDashboard();
+
+			await new Promise((r) => setTimeout(r, 50));
+
+			// Verify timeseries call includes range from default select value (12h)
+			const timeseriesCall = fetchMock.mock.calls.find(
+				(call: unknown[]) => typeof call[0] === 'string' && (call[0] as string).includes('/obs/timeseries'),
+			);
+			expect(timeseriesCall).toBeDefined();
+			expect(timeseriesCall![0]).toContain('range=12h');
+		} finally {
+			cleanup();
+		}
+	});
+
+	test('status=all omits status param from query', async () => {
+		const { dom, cleanup } = setupDom(DASHBOARD_WITH_FILTERS_HTML, { username: 'admin', password: 'pass' });
+		const fetchMock = buildFetch({
+			'/obs/summary': SUMMARY,
+			'/obs/timeseries': TIMESERIES_RESPONSE,
+			'/obs/requests': REQUESTS_RESPONSE,
+			'/obs/errors': ERRORS_RESPONSE,
+		});
+		Object.assign(globalThis, { fetch: fetchMock });
+
+		try {
+			const { initObsDashboard } = await import('../src/lib/obs-dashboard');
+			initObsDashboard();
+
+			await new Promise((r) => setTimeout(r, 50));
+
+			// Default status is "all" — should NOT include status= in URL
+			const summaryCall = fetchMock.mock.calls.find(
+				(call: unknown[]) => typeof call[0] === 'string' && (call[0] as string).includes('/obs/summary'),
+			);
+			expect(summaryCall).toBeDefined();
+			expect(summaryCall![0]).not.toContain('status=');
+		} finally {
+			cleanup();
+		}
+	});
+});
+
+// ─── buildFilterQuery pure function tests ─────────────────────────
+
+describe('buildFilterQuery: query string builder', () => {
+	test('returns empty string when no filters provided', async () => {
+		const { buildFilterQuery } = await import('../src/lib/obs-dashboard');
+		expect(buildFilterQuery({})).toBe('');
+	});
+
+	test('builds range-only query string', async () => {
+		const { buildFilterQuery } = await import('../src/lib/obs-dashboard');
+		expect(buildFilterQuery({ range: '1h' })).toBe('?range=1h');
+	});
+
+	test('builds status-only query string (non-all)', async () => {
+		const { buildFilterQuery } = await import('../src/lib/obs-dashboard');
+		expect(buildFilterQuery({ status: '500' })).toBe('?status=500');
+	});
+
+	test('omits status when value is "all"', async () => {
+		const { buildFilterQuery } = await import('../src/lib/obs-dashboard');
+		const qs = buildFilterQuery({ range: '12h', status: 'all' });
+		expect(qs).toBe('?range=12h');
+		expect(qs).not.toContain('status');
+	});
+
+	test('combines range and status params', async () => {
+		const { buildFilterQuery } = await import('../src/lib/obs-dashboard');
+		const qs = buildFilterQuery({ range: '30m', status: '404' });
+		expect(qs).toContain('range=30m');
+		expect(qs).toContain('status=404');
+	});
+});
+
+describe('obs-chart: brush selection callback', () => {
+	beforeEach(() => {
+		chartMocks.updateFn.mockReset();
+		chartMocks.destroyFn.mockReset();
+	});
+
+	afterEach(() => {
+		vi.resetModules();
+	});
+
+	function buildCanvasMock() {
+		const ctx = {
+			clearRect: vi.fn(),
+			fillRect: vi.fn(),
+			canvas: {} as HTMLCanvasElement,
+		};
+		return {
+			getContext: vi.fn().mockReturnValue(ctx),
+			width: 800,
+			height: 300,
+		} as unknown as HTMLCanvasElement;
+	}
+
+	test('setOnBrushSelect is exported and callable', async () => {
+		const canvas = buildCanvasMock();
+		const { initObsChart, setOnBrushSelect } = await import('../src/lib/obs-chart');
+		const chart = initObsChart(canvas);
+
+		const callback = vi.fn();
+		setOnBrushSelect(chart, callback);
+
+		expect(typeof setOnBrushSelect).toBe('function');
+	});
+
+	test('triggerBrushSelect invokes the registered callback', async () => {
+		const canvas = buildCanvasMock();
+		const { initObsChart, setOnBrushSelect, triggerBrushSelect } = await import('../src/lib/obs-chart');
+		const chart = initObsChart(canvas);
+
+		const callback = vi.fn();
+		setOnBrushSelect(chart, callback);
+
+		triggerBrushSelect(chart, 1, 3);
+
+		expect(callback).toHaveBeenCalledOnce();
+		expect(callback).toHaveBeenCalledWith({ fromIndex: 1, toIndex: 3 });
+	});
+});
+
+// ─── obs-chart: stacked status breakdown datasets ─────────────────
+
+describe('obs-chart: stacked status breakdown', () => {
+	beforeEach(() => {
+		chartMocks.updateFn.mockReset();
+		chartMocks.destroyFn.mockReset();
+	});
+
+	afterEach(() => {
+		vi.resetModules();
+	});
+
+	function buildCanvasMock() {
+		const ctx = {
+			clearRect: vi.fn(),
+			fillRect: vi.fn(),
+			canvas: {} as HTMLCanvasElement,
+		};
+		return {
+			getContext: vi.fn().mockReturnValue(ctx),
+			width: 800,
+			height: 300,
+		} as unknown as HTMLCanvasElement;
+	}
+
+	test('updateObsChart creates datasets per exact status code when breakdown present', async () => {
+		const canvas = buildCanvasMock();
+		const { initObsChart, updateObsChart } = await import('../src/lib/obs-chart');
+		const chart = initObsChart(canvas);
+
+		updateObsChart(chart, [
+			{ bucket: '2026-04-10T12:00', count: 5, status_counts: { '200': 2, '201': 1, '404': 1, '500': 1 } },
+			{ bucket: '2026-04-10T12:01', count: 2, status_counts: { '200': 2 } },
+		]);
+
+		const datasets = (chart as unknown as { data: { datasets: Array<{ data: number[]; label: string }> } }).data.datasets;
+		expect(datasets.length).toBe(4);
+
+		const d200 = datasets.find(d => d.label === '200');
+		expect(d200).toBeDefined();
+		expect(d200!.data).toEqual([2, 2]);
+
+		const d201 = datasets.find(d => d.label === '201');
+		expect(d201).toBeDefined();
+		expect(d201!.data).toEqual([1, 0]);
+
+		const d404 = datasets.find(d => d.label === '404');
+		expect(d404).toBeDefined();
+		expect(d404!.data).toEqual([1, 0]);
+
+		const d500 = datasets.find(d => d.label === '500');
+		expect(d500).toBeDefined();
+		expect(d500!.data).toEqual([1, 0]);
+	});
+
+	test('updateObsChart falls back to single dataset when no breakdown fields', async () => {
+		const canvas = buildCanvasMock();
+		const { initObsChart, updateObsChart } = await import('../src/lib/obs-chart');
+		const chart = initObsChart(canvas);
+
+		updateObsChart(chart, [
+			{ bucket: '2026-04-10T12:00', count: 5 },
+		]);
+
+		const datasets = (chart as unknown as { data: { datasets: Array<{ data: number[] }> } }).data.datasets;
+		expect(datasets.length).toBe(1);
+		expect(datasets[0].data).toEqual([5]);
+	});
+});
+
+// ─── obs-dashboard: limit control tests ───────────────────────────
+
+describe('obs-dashboard: limit control', () => {
+	const DASHBOARD_LIMIT_HTML = `
+		<html><body>
+			<div data-obs-dashboard data-endpoint="http://api.test">
+				<div data-obs-error hidden></div>
+				<canvas data-obs-chart></canvas>
+				<span data-obs-total-requests>—</span>
+				<span data-obs-total-errors>—</span>
+				<span data-obs-buffer-requests>—</span>
+				<span data-obs-buffer-errors>—</span>
+				<span data-obs-last-updated>—</span>
+				<select data-obs-range-select>
+					<option value="12h" selected>12h</option>
+				</select>
+				<select data-obs-status-select>
+					<option value="all" selected>All</option>
+				</select>
+				<select data-obs-refresh-select>
+					<option value="0" selected>Off</option>
+				</select>
+				<select data-obs-limit-select>
+					<option value="20" selected>20</option>
+					<option value="100">100</option>
+					<option value="200">200</option>
+				</select>
+				<div data-obs-requests></div>
+				<div data-obs-errors></div>
+				<button data-obs-logout>Logout</button>
+			</div>
+		</body></html>
+	`;
+
+	const SUMMARY = {
+		total_requests: 10,
+		total_errors: 0,
+		status_counts: { '200': 10 },
+		path_counts: { '/health': 10 },
+		requests_buffer_size: 10,
+		errors_buffer_size: 0,
+	};
+	const TIMESERIES_RESPONSE = {
+		buckets: [{ bucket: '2026-04-10T12:00', count: 10, status_counts: { '200': 10 } }],
+		range: '12h',
+		bucket_width: '1h',
+		total: 10,
+	};
+	const REQUESTS_RESPONSE = { items: [], total: 0 };
+	const ERRORS_RESPONSE = { items: [], total: 0 };
+
+	function buildFetch(responses: Record<string, unknown>) {
+		return vi.fn(async (url: string) => {
+			const key = Object.keys(responses).find((k) => url.includes(k));
+			if (!key) return new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } });
+			return new Response(JSON.stringify(responses[key]), {
+				status: 200,
+				headers: { 'content-type': 'application/json' },
+			});
+		});
+	}
+
+	afterEach(() => {
+		vi.resetModules();
+	});
+
+	test('initial fetch includes limit param from limit select', async () => {
+		const { dom, cleanup } = setupDom(DASHBOARD_LIMIT_HTML, { username: 'admin', password: 'pass' });
+		const fetchMock = buildFetch({
+			'/obs/summary': SUMMARY,
+			'/obs/timeseries': TIMESERIES_RESPONSE,
+			'/obs/requests': REQUESTS_RESPONSE,
+			'/obs/errors': ERRORS_RESPONSE,
+		});
+		Object.assign(globalThis, { fetch: fetchMock });
+
+		try {
+			const { initObsDashboard } = await import('../src/lib/obs-dashboard');
+			initObsDashboard();
+
+			await new Promise((r) => setTimeout(r, 50));
+
+			const requestsCall = fetchMock.mock.calls.find(
+				(call: unknown[]) => typeof call[0] === 'string' && (call[0] as string).includes('/obs/requests'),
+			);
+			expect(requestsCall).toBeDefined();
+			expect(requestsCall![0]).toContain('limit=20');
+
+			const errorsCall = fetchMock.mock.calls.find(
+				(call: unknown[]) => typeof call[0] === 'string' && (call[0] as string).includes('/obs/errors'),
+			);
+			expect(errorsCall).toBeDefined();
+			expect(errorsCall![0]).toContain('limit=20');
+		} finally {
+			cleanup();
+		}
+	});
+
+	test('changing limit select triggers re-fetch with new limit', async () => {
+		const { dom, cleanup } = setupDom(DASHBOARD_LIMIT_HTML, { username: 'admin', password: 'pass' });
+		const fetchMock = buildFetch({
+			'/obs/summary': SUMMARY,
+			'/obs/timeseries': TIMESERIES_RESPONSE,
+			'/obs/requests': REQUESTS_RESPONSE,
+			'/obs/errors': ERRORS_RESPONSE,
+		});
+		Object.assign(globalThis, { fetch: fetchMock });
+
+		try {
+			const { initObsDashboard } = await import('../src/lib/obs-dashboard');
+			initObsDashboard();
+
+			await new Promise((r) => setTimeout(r, 50));
+
+			fetchMock.mockClear();
+
+			const limitSelect = dom.window.document.querySelector<HTMLSelectElement>('[data-obs-limit-select]');
+			limitSelect!.value = '100';
+			limitSelect!.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+
+			await new Promise((r) => setTimeout(r, 50));
+
+			const requestsCall = fetchMock.mock.calls.find(
+				(call: unknown[]) => typeof call[0] === 'string' && (call[0] as string).includes('/obs/requests'),
+			);
+			expect(requestsCall).toBeDefined();
+			expect(requestsCall![0]).toContain('limit=100');
+
+			const errorsCall = fetchMock.mock.calls.find(
+				(call: unknown[]) => typeof call[0] === 'string' && (call[0] as string).includes('/obs/errors'),
+			);
+			expect(errorsCall).toBeDefined();
+			expect(errorsCall![0]).toContain('limit=100');
+		} finally {
+			cleanup();
+		}
+	});
+});
+
+// ─── buildFilterQuery: limit parameter ────────────────────────────
+
+describe('buildFilterQuery: limit parameter support', () => {
+	test('includes limit when provided', async () => {
+		const { buildFilterQuery } = await import('../src/lib/obs-dashboard');
+		const qs = buildFilterQuery({ range: '1h', limit: 20 });
+		expect(qs).toContain('limit=20');
+		expect(qs).toContain('range=1h');
+	});
+
+	test('omits limit when not provided', async () => {
+		const { buildFilterQuery } = await import('../src/lib/obs-dashboard');
+		const qs = buildFilterQuery({ range: '1h' });
+		expect(qs).not.toContain('limit');
+	});
+});
+
+// ─── buildFilterQuery: from_ts/to_ts support ─────────────────────
+
+describe('buildFilterQuery: from_ts/to_ts zoom parameters', () => {
+	test('includes from_ts and to_ts when provided', async () => {
+		const { buildFilterQuery } = await import('../src/lib/obs-dashboard');
+		const qs = buildFilterQuery({ range: '1h', from_ts: '2026-04-10T12:00:00Z', to_ts: '2026-04-10T13:00:00Z' });
+		expect(qs).toContain('from_ts=');
+		expect(qs).toContain('to_ts=');
+		expect(qs).toContain('range=1h');
+	});
+
+	test('omits from_ts and to_ts when not provided', async () => {
+		const { buildFilterQuery } = await import('../src/lib/obs-dashboard');
+		const qs = buildFilterQuery({ range: '1h' });
+		expect(qs).not.toContain('from_ts');
+		expect(qs).not.toContain('to_ts');
+	});
+
+	test('includes from_ts/to_ts alongside status and limit', async () => {
+		const { buildFilterQuery } = await import('../src/lib/obs-dashboard');
+		const qs = buildFilterQuery({
+			range: '30m',
+			status: '500',
+			limit: 20,
+			from_ts: '2026-04-10T12:00:00Z',
+			to_ts: '2026-04-10T12:30:00Z',
+		});
+		expect(qs).toContain('range=30m');
+		expect(qs).toContain('status=500');
+		expect(qs).toContain('limit=20');
+		expect(qs).toContain('from_ts=');
+		expect(qs).toContain('to_ts=');
+	});
+});
+
+// ─── obs-dashboard: brush zoom reset button ───────────────────────
+
+describe('obs-dashboard: zoom reset button', () => {
+	const DASHBOARD_ZOOM_HTML = `
+		<html><body>
+			<div data-obs-dashboard data-endpoint="http://api.test">
+				<div data-obs-error hidden></div>
+				<canvas data-obs-chart></canvas>
+				<span data-obs-total-requests>—</span>
+				<span data-obs-total-errors>—</span>
+				<span data-obs-buffer-requests>—</span>
+				<span data-obs-buffer-errors>—</span>
+				<span data-obs-last-updated>—</span>
+				<select data-obs-range-select>
+					<option value="12h" selected>12h</option>
+				</select>
+				<select data-obs-status-select>
+					<option value="all" selected>All</option>
+				</select>
+				<select data-obs-refresh-select>
+					<option value="0" selected>Off</option>
+				</select>
+				<button data-obs-chart-reset hidden>Reset Zoom</button>
+				<div data-obs-requests></div>
+				<div data-obs-errors></div>
+				<button data-obs-logout>Logout</button>
+			</div>
+		</body></html>
+	`;
+
+	const SUMMARY = {
+		total_requests: 10,
+		total_errors: 0,
+		status_counts: { '200': 10 },
+		path_counts: { '/health': 10 },
+		requests_buffer_size: 10,
+		errors_buffer_size: 0,
+	};
+	const TIMESERIES_RESPONSE = {
+		buckets: [
+			{ bucket: '2026-04-10T12:00', count: 5, status_counts: { '200': 5 } },
+			{ bucket: '2026-04-10T13:00', count: 5, status_counts: { '200': 5 } },
+		],
+		range: '12h',
+		bucket_width: '1h',
+		total: 10,
+	};
+	const REQUESTS_RESPONSE = { items: [], total: 0 };
+	const ERRORS_RESPONSE = { items: [], total: 0 };
+
+	function buildFetch(responses: Record<string, unknown>) {
+		return vi.fn(async (url: string) => {
+			const key = Object.keys(responses).find((k) => url.includes(k));
+			if (!key) return new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } });
+			return new Response(JSON.stringify(responses[key]), {
+				status: 200,
+				headers: { 'content-type': 'application/json' },
+			});
+		});
+	}
+
+	afterEach(() => {
+		vi.resetModules();
+	});
+
+	test('reset zoom button is hidden initially', async () => {
+		const { dom, cleanup } = setupDom(DASHBOARD_ZOOM_HTML, { username: 'admin', password: 'pass' });
+		const fetchMock = buildFetch({
+			'/obs/summary': SUMMARY,
+			'/obs/timeseries': TIMESERIES_RESPONSE,
+			'/obs/requests': REQUESTS_RESPONSE,
+			'/obs/errors': ERRORS_RESPONSE,
+		});
+		Object.assign(globalThis, { fetch: fetchMock });
+
+		try {
+			const { initObsDashboard } = await import('../src/lib/obs-dashboard');
+			initObsDashboard();
+
+			await new Promise((r) => setTimeout(r, 50));
+
+			const resetBtn = dom.window.document.querySelector<HTMLButtonElement>('[data-obs-chart-reset]');
+			expect(resetBtn).not.toBeNull();
+			expect(resetBtn!.hidden).toBe(true);
+		} finally {
+			cleanup();
+		}
+	});
+
+	test('clicking reset zoom button removes from_ts/to_ts from next fetch', async () => {
+		const { dom, cleanup } = setupDom(DASHBOARD_ZOOM_HTML, { username: 'admin', password: 'pass' });
+		const fetchMock = buildFetch({
+			'/obs/summary': SUMMARY,
+			'/obs/timeseries': TIMESERIES_RESPONSE,
+			'/obs/requests': REQUESTS_RESPONSE,
+			'/obs/errors': ERRORS_RESPONSE,
+		});
+		Object.assign(globalThis, { fetch: fetchMock });
+
+		try {
+			const { initObsDashboard } = await import('../src/lib/obs-dashboard');
+			initObsDashboard();
+
+			await new Promise((r) => setTimeout(r, 50));
+
+			fetchMock.mockClear();
+
+			// Click reset zoom
+			const resetBtn = dom.window.document.querySelector<HTMLButtonElement>('[data-obs-chart-reset]');
+			resetBtn!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+
+			await new Promise((r) => setTimeout(r, 50));
+
+			// After reset, fetch should NOT contain from_ts/to_ts
+			const timeseriesCall = fetchMock.mock.calls.find(
+				(call: unknown[]) => typeof call[0] === 'string' && (call[0] as string).includes('/obs/timeseries'),
+			);
+			if (timeseriesCall) {
+				expect(timeseriesCall[0]).not.toContain('from_ts=');
+				expect(timeseriesCall[0]).not.toContain('to_ts=');
+			}
+
+			// And reset button should be hidden again
+			expect(resetBtn!.hidden).toBe(true);
+		} finally {
+			cleanup();
+		}
+	});
+
+	test('brush selection on chart triggers fetch with from_ts/to_ts and shows reset button', async () => {
+		const { dom, cleanup } = setupDom(DASHBOARD_ZOOM_HTML, { username: 'admin', password: 'pass' });
+		const fetchMock = buildFetch({
+			'/obs/summary': SUMMARY,
+			'/obs/timeseries': TIMESERIES_RESPONSE,
+			'/obs/requests': REQUESTS_RESPONSE,
+			'/obs/errors': ERRORS_RESPONSE,
+		});
+		Object.assign(globalThis, { fetch: fetchMock });
+
+		try {
+			const { initObsDashboard } = await import('../src/lib/obs-dashboard');
+			const { triggerBrushSelect } = await import('../src/lib/obs-chart');
+			initObsDashboard();
+
+			await new Promise((r) => setTimeout(r, 50));
+
+			fetchMock.mockClear();
+
+			// Get the chart instance from the canvas — it's stored internally.
+			// We need to trigger brush select on the chart. The dashboard wires the
+			// callback during init, so triggerBrushSelect on the chart should work.
+			// We find the chart via the Chart constructor mock.
+			const ChartModule = await import('chart.js/auto');
+			const ChartCtor = ChartModule.default as unknown as { mock: { instances: Array<unknown> } };
+			const chartInstance = ChartCtor.mock.instances[ChartCtor.mock.instances.length - 1];
+
+			triggerBrushSelect(chartInstance as import('chart.js/auto').default, 0, 1);
+
+			await new Promise((r) => setTimeout(r, 50));
+
+			// Verify fetch includes from_ts and to_ts
+			const timeseriesCall = fetchMock.mock.calls.find(
+				(call: unknown[]) => typeof call[0] === 'string' && (call[0] as string).includes('/obs/timeseries'),
+			);
+			expect(timeseriesCall).toBeDefined();
+			expect(timeseriesCall![0]).toContain('from_ts=');
+			expect(timeseriesCall![0]).toContain('to_ts=');
+
+			// Reset button should be visible
+			const resetBtn = dom.window.document.querySelector<HTMLButtonElement>('[data-obs-chart-reset]');
+			expect(resetBtn!.hidden).toBe(false);
+		} finally {
+			cleanup();
+		}
+	});
+});
+
+describe('obs-dashboard: auto-refresh select behavior', () => {
+	const DASHBOARD_WITH_FILTERS_HTML = `
+		<html><body>
+			<div data-obs-dashboard data-endpoint="http://api.test">
+				<div data-obs-error hidden></div>
+				<canvas data-obs-chart></canvas>
+				<span data-obs-total-requests>—</span>
+				<span data-obs-total-errors>—</span>
+				<span data-obs-buffer-requests>—</span>
+				<span data-obs-buffer-errors>—</span>
+				<span data-obs-last-updated>—</span>
+				<select data-obs-range-select>
+					<option value="12h" selected>12h</option>
+				</select>
+				<select data-obs-status-select>
+					<option value="all" selected>All</option>
+				</select>
+				<select data-obs-refresh-select>
+					<option value="0" selected>Off</option>
+					<option value="5000">5s</option>
+					<option value="10000">10s</option>
+					<option value="30000">30s</option>
+					<option value="60000">1min</option>
+				</select>
+				<div data-obs-requests></div>
+				<div data-obs-errors></div>
+				<button data-obs-logout>Logout</button>
+			</div>
+		</body></html>
+	`;
+
+	const SUMMARY = {
+		total_requests: 10,
+		total_errors: 0,
+		status_counts: { '200': 10 },
+		path_counts: { '/health': 10 },
+		requests_buffer_size: 10,
+		errors_buffer_size: 0,
+	};
+
+	const TIMESERIES_RESPONSE = {
+		buckets: [{ bucket: '2026-04-10T12:00', count: 10 }],
+		range: '12h',
+		bucket_width: '1h',
+		total: 10,
+	};
+
+	const REQUESTS_RESPONSE = { items: [], total: 0 };
+	const ERRORS_RESPONSE = { items: [], total: 0 };
+
+	function buildFetch(responses: Record<string, unknown>) {
+		return vi.fn(async (url: string) => {
+			const key = Object.keys(responses).find((k) => url.includes(k));
+			if (!key) return new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } });
+			return new Response(JSON.stringify(responses[key]), {
+				status: 200,
+				headers: { 'content-type': 'application/json' },
+			});
+		});
+	}
+
+	afterEach(() => {
+		vi.resetModules();
+		vi.useRealTimers();
+	});
+
+	test('selecting a positive interval starts auto-refresh polling', async () => {
+		vi.useFakeTimers();
+
+		const { dom, cleanup } = setupDom(DASHBOARD_WITH_FILTERS_HTML, { username: 'admin', password: 'pass' });
+		const fetchMock = buildFetch({
+			'/obs/summary': SUMMARY,
+			'/obs/timeseries': TIMESERIES_RESPONSE,
+			'/obs/requests': REQUESTS_RESPONSE,
+			'/obs/errors': ERRORS_RESPONSE,
+		});
+		Object.assign(globalThis, { fetch: fetchMock });
+
+		try {
+			const { initObsDashboard } = await import('../src/lib/obs-dashboard');
+			initObsDashboard();
+
+			// Let initial fetch resolve
+			await vi.advanceTimersByTimeAsync(50);
+
+			fetchMock.mockClear();
+
+			// Enable auto-refresh at 5s
+			const refreshSelect = dom.window.document.querySelector<HTMLSelectElement>('[data-obs-refresh-select]');
+			refreshSelect!.value = '5000';
+			refreshSelect!.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+
+			// Advance timer by 5 seconds — should trigger one auto-refresh
+			await vi.advanceTimersByTimeAsync(5000);
+
+			// At least one fetch cycle should have occurred
+			expect(fetchMock).toHaveBeenCalled();
+			const summaryCall = fetchMock.mock.calls.find(
+				(call: unknown[]) => typeof call[0] === 'string' && (call[0] as string).includes('/obs/summary'),
+			);
+			expect(summaryCall).toBeDefined();
+		} finally {
+			cleanup();
+		}
+	});
+
+	test('switching from positive interval to 0 stops polling', async () => {
+		vi.useFakeTimers();
+
+		const { dom, cleanup } = setupDom(DASHBOARD_WITH_FILTERS_HTML, { username: 'admin', password: 'pass' });
+		const fetchMock = buildFetch({
+			'/obs/summary': SUMMARY,
+			'/obs/timeseries': TIMESERIES_RESPONSE,
+			'/obs/requests': REQUESTS_RESPONSE,
+			'/obs/errors': ERRORS_RESPONSE,
+		});
+		Object.assign(globalThis, { fetch: fetchMock });
+
+		try {
+			const { initObsDashboard } = await import('../src/lib/obs-dashboard');
+			initObsDashboard();
+
+			await vi.advanceTimersByTimeAsync(50);
+
+			// Enable auto-refresh at 5s
+			const refreshSelect = dom.window.document.querySelector<HTMLSelectElement>('[data-obs-refresh-select]');
+			refreshSelect!.value = '5000';
+			refreshSelect!.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+
+			// Verify one tick fires
+			await vi.advanceTimersByTimeAsync(5000);
+
+			fetchMock.mockClear();
+
+			// Now disable
+			refreshSelect!.value = '0';
+			refreshSelect!.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+
+			// Advance another 10 seconds — should NOT trigger
+			await vi.advanceTimersByTimeAsync(10000);
+
+			expect(fetchMock).not.toHaveBeenCalled();
 		} finally {
 			cleanup();
 		}

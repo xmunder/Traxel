@@ -46,6 +46,22 @@ class Settings(BaseSettings):
     # unbounded growth when many unknown paths are hit.
     obs_path_label_limit: int = 50
 
+    # ------------------------------------------------------------------ #
+    # Observability persistence (SQLite)                                   #
+    # ------------------------------------------------------------------ #
+    # Path to the SQLite DB file.  Set to "" to disable persistence and
+    # fall back to in-memory deque behaviour (legacy mode).
+    obs_db_path: str = "data/obs.db"
+
+    # Retention: rows older than this many days are pruned on startup + daily.
+    obs_retention_days: int = 30
+
+    # Background flush interval (seconds).
+    obs_flush_interval_s: float = 1.0
+
+    # Batch size: flush at most this many rows per transaction.
+    obs_flush_batch_size: int = 100
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import threading
 from time import sleep
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -313,3 +315,78 @@ class TestSnapshotContract:
             )
         rows = collector.snapshot_requests(limit=3)
         assert len(rows) == 3
+
+
+# ------------------------------------------------------------------ #
+# ObsStore adapter integration                                         #
+# ------------------------------------------------------------------ #
+
+
+class TestObsStoreAdapter:
+    """Verify that MetricsCollector correctly delegates to an ObsStore."""
+
+    def test_record_request_calls_obs_store_enqueue_when_store_provided(self) -> None:
+        """When obs_store is attached, record_request must call enqueue."""
+        mock_store = MagicMock()
+        mock_store.enqueue = AsyncMock()
+
+        collector = make_collector()
+        collector.obs_store = mock_store
+
+        collector.record_request(
+            method="GET", path="/health", status_code=200, duration_ms=5
+        )
+
+        mock_store.enqueue.assert_called_once()
+        call_kwargs = mock_store.enqueue.call_args.kwargs
+        assert call_kwargs["method"] == "GET"
+        assert call_kwargs["path"] == "/health"
+        assert call_kwargs["status_code"] == 200
+        assert call_kwargs["duration_ms"] == 5
+
+    def test_record_request_still_updates_counters_when_store_provided(self) -> None:
+        """Counters must increment even when an obs_store is used."""
+        mock_store = MagicMock()
+        mock_store.enqueue = AsyncMock()
+
+        collector = make_collector(requests_limit=20)
+        collector.obs_store = mock_store
+
+        for _ in range(3):
+            collector.record_request(
+                method="POST", path="/vectorize", status_code=200, duration_ms=10
+            )
+
+        assert collector.snapshot_summary()["total_requests"] == 3
+
+    def test_record_request_deque_mode_when_no_store(self) -> None:
+        """Without obs_store, collector falls back to deque-only mode."""
+        collector = make_collector(requests_limit=5)
+        # No obs_store attribute set
+
+        collector.record_request(
+            method="GET", path="/health", status_code=200, duration_ms=3
+        )
+        rows = collector.snapshot_requests()
+        assert len(rows) == 1
+        assert rows[0]["status_code"] == 200
+
+    def test_record_error_stays_in_deque_regardless_of_store(self) -> None:
+        """Errors always go to the deque — obs_store is for requests only."""
+        mock_store = MagicMock()
+        mock_store.enqueue = AsyncMock()
+
+        collector = make_collector(errors_limit=5)
+        collector.obs_store = mock_store
+
+        collector.record_error(
+            method="POST",
+            path="/vectorize",
+            error_type="ValueError",
+            error_detail="bad input",
+        )
+
+        # Error must appear in snapshot
+        rows = collector.snapshot_errors()
+        assert len(rows) == 1
+        assert rows[0]["error_type"] == "ValueError"

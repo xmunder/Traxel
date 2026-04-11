@@ -368,3 +368,96 @@
 	padding: 16px 0;
 	margin: 0;
 }
+
+/* ------------------------------------------------------------------ */
+/* Filter bar and select dropdowns                                     */
+/* ------------------------------------------------------------------ */
+.obs-filter-label {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 0.75rem;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: #8f8f8f;
+	white-space: nowrap;
+}
+
+.obs-select {
+	appearance: none;
+	background: #121212;
+	border: 1px solid rgba(204, 255, 0, 0.25);
+	color: #fff;
+	padding: 5px 24px 5px 10px;
+	font-size: 0.8125rem;
+	font-family: inherit;
+	cursor: pointer;
+	outline: none;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238f8f8f'/%3E%3C/svg%3E");
+	background-repeat: no-repeat;
+	background-position: right 8px center;
+	background-size: 10px 6px;
+}
+
+.obs-select:focus {
+	border-color: #ccff00;
+}
+
+.obs-select:hover {
+	border-color: rgba(204, 255, 0, 0.5);
+}
+
+/* ------------------------------------------------------------------ */
+/* Chart container                                                     */
+/* ------------------------------------------------------------------ */
+.obs-chart-container {
+	background: #1a1a1a;
+	border: 1px solid rgba(204, 255, 0, 0.25);
+	padding: 16px;
+	position: relative;
+	height: 240px;
+	min-height: 180px;
+}
+
+.obs-chart-brush {
+	position: absolute;
+	top: 16px;
+	bottom: 16px;
+	left: 0;
+	width: 0;
+	background: rgba(204, 255, 0, 0.16);
+	border: 1px solid rgba(204, 255, 0, 0.45);
+	pointer-events: none;
+	z-index: 2;
+}
+
+.obs-chart-actions {
+	display: flex;
+	justify-content: flex-end;
+	margin-top: 12px;
+}
+
+.obs-chart-reset-btn {
+	background: none;
+	border: 1px solid rgba(204, 255, 0, 0.4);
+	color: #8f8f8f;
+	padding: 6px 14px;
+	font-size: 0.75rem;
+	cursor: pointer;
+	transition: border-color 0.15s, color 0.15s;
+}
+
+.obs-chart-reset-btn:hover {
+	border-color: #ccff00;
+	color: #ccff00;
+}
+
+/* ------------------------------------------------------------------ */
+/* Scrollable table containers                                         */
+/* ------------------------------------------------------------------ */
+[data-obs-requests],
+[data-obs-errors] {
+	max-height: 420px;
+	overflow-y: auto;
+}
