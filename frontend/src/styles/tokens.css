@@ -1,0 +1,19 @@
+/* tokens.css — shared design tokens for the Tracelab design system.
+   Extracted from vectorizer.css to eliminate duplication across pages. */
+
+:root {
+	color-scheme: dark;
+	font-family: 'Inter', system-ui, sans-serif;
+	--bg: #0e0e0e;
+	--panel: #1a1a1a;
+	--panel-soft: #121212;
+	--panel-muted: #222;
+	--text: #ffffff;
+	--muted: #8f8f8f;
+	--lime: #ccff00;
+	--lime-dark: #151b00;
+	--border: #ccff00;
+	--border-soft: rgba(204, 255, 0, 0.25);
+	--shadow-hard: 4px 4px 0 0 #ccff00;
+	--shadow-hard-dark: 4px 4px 0 0 #000;
+}

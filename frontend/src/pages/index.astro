@@ -1,5 +1,6 @@
 ---
 import UploadZone from '../components/UploadZone.astro';
+import BaseLayout from '../layouts/BaseLayout.astro';
 import '../styles/vectorizer.css';
 
 const vectorizeEndpoint = import.meta.env.PUBLIC_VECTORIZE_ENDPOINT ?? 'http://127.0.0.1:8000/vectorize';
@@ -23,119 +24,110 @@ const capabilities = [
 ];
 ---
 
-	<html class="dark" lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<link rel="icon" href="/favicon.ico" />
-		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<meta name="generator" content={Astro.generator} />
-		<link rel="preconnect" href="https://fonts.googleapis.com" />
-		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-		<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-		<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
-		<title>Tracelab | System Active</title>
-	</head>
-	<body class="mvp-upload-body">
-		<div
-			class="mvp-upload-page"
-			data-vectorizer-app
-			data-page="upload"
-			data-endpoint={vectorizeEndpoint}
-			data-workspace-path="/workspace"
-			data-state="idle"
-		>
-			<div class="upload-processing-overlay upload-processing-overlay--page" data-processing-overlay hidden aria-live="polite" aria-hidden="true">
-				<div class="upload-processing-overlay__content">
-					<div class="upload-processing-overlay__spinner" aria-hidden="true"></div>
-					<p class="upload-processing-overlay__eyebrow">Tracelab engine active</p>
-					<h3 class="upload-processing-overlay__title" data-processing-status>PROCESSING</h3>
-					<p class="upload-processing-overlay__message" data-processing-message>
-						Preparing vectorization...
-					</p>
-					<div class="upload-processing-overlay__file">
-						<span>Selected file</span>
-						<strong data-selected-file>No file selected.</strong>
-					</div>
+<BaseLayout
+	title="Tracelab | System Active"
+	description="Convert raster images to clean, editable SVG files. Optimized for logos, icons, and flat artwork."
+	pathname="/"
+	bodyClass="mvp-upload-body"
+>
+	<div
+		class="mvp-upload-page"
+		data-vectorizer-app
+		data-page="upload"
+		data-endpoint={vectorizeEndpoint}
+		data-workspace-path="/workspace"
+		data-state="idle"
+	>
+		<div class="upload-processing-overlay upload-processing-overlay--page" data-processing-overlay hidden aria-live="polite" aria-hidden="true">
+			<div class="upload-processing-overlay__content">
+				<div class="upload-processing-overlay__spinner" aria-hidden="true"></div>
+				<p class="upload-processing-overlay__eyebrow">Tracelab engine active</p>
+				<h3 class="upload-processing-overlay__title" data-processing-status>PROCESSING</h3>
+				<p class="upload-processing-overlay__message" data-processing-message>
+					Preparing vectorization...
+				</p>
+				<div class="upload-processing-overlay__file">
+					<span>Selected file</span>
+					<strong data-selected-file>No file selected.</strong>
 				</div>
 			</div>
+		</div>
 
-			<header class="mvp-upload-header">
-				<div class="mvp-upload-header__brand">Tracelab</div>
-				<div class="mvp-upload-header__actions">
-				</div>
-			</header>
+		<header class="mvp-upload-header">
+			<div class="mvp-upload-header__brand">Tracelab</div>
+			<div class="mvp-upload-header__actions">
+			</div>
+		</header>
 
-			<main class="mvp-upload-main">
-				<div class="mvp-upload-main__glow mvp-upload-main__glow--left" aria-hidden="true"></div>
-				<div class="mvp-upload-main__glow mvp-upload-main__glow--right" aria-hidden="true"></div>
+		<main class="mvp-upload-main" id="main-content">
+			<div class="mvp-upload-main__glow mvp-upload-main__glow--left" aria-hidden="true"></div>
+			<div class="mvp-upload-main__glow mvp-upload-main__glow--right" aria-hidden="true"></div>
 
-				<div class="mvp-upload-shell">
-					<section class="mvp-upload-hero">
-						<h1>
-							Convert Pixels <br />
-							<span>into Precision Paths</span>
-						</h1>
-						<p>
-							Convert raster images to clean, editable SVG files. Optimized for logos, icons, and flat artwork.
-						</p>
-					</section>
+			<div class="mvp-upload-shell">
+				<section class="mvp-upload-hero">
+					<h1>
+						Convert Pixels <br />
+						<span>into Precision Paths</span>
+					</h1>
+					<p>
+						Convert raster images to clean, editable SVG files. Optimized for logos, icons, and flat artwork.
+					</p>
+				</section>
 
-					<section class="mvp-upload-layout" aria-label="Upload and capability overview">
-						<div class="mvp-upload-layout__left">
-							<UploadZone />
+				<section class="mvp-upload-layout" aria-label="Upload and capability overview">
+					<div class="mvp-upload-layout__left">
+						<UploadZone />
+					</div>
+
+					<aside class="mvp-upload-layout__right">
+						<div class="mvp-upload-warning" data-warning aria-live="polite">
+							<span class="material-symbols-outlined">warning</span>
+							<p>Optimized for logos &amp; icons. Complex images or photos may need manual cleanup.</p>
 						</div>
 
-						<aside class="mvp-upload-layout__right">
-							<div class="mvp-upload-warning" data-warning aria-live="polite">
-								<span class="material-symbols-outlined">warning</span>
-								<p>Optimized for logos &amp; icons. Complex images or photos may need manual cleanup.</p>
+						<div class="mvp-upload-formats">
+							<span>Supported Formats</span>
+							<div class="mvp-upload-formats__chips">
+								<span>PNG</span>
+								<span>JPG</span>
+								<span>WEBP</span>
 							</div>
+						</div>
 
-							<div class="mvp-upload-formats">
-								<span>Supported Formats</span>
-								<div class="mvp-upload-formats__chips">
-									<span>PNG</span>
-									<span>JPG</span>
-									<span>WEBP</span>
-								</div>
-							</div>
+						<div class="mvp-upload-capabilities">
+							{capabilities.map((item) => (
+								<article class="mvp-upload-capability">
+									<div class="mvp-upload-capability__icon">
+										<span class="material-symbols-outlined">{item.icon}</span>
+									</div>
+									<div>
+										<h3>{item.title}</h3>
+										<p>{item.copy}</p>
+									</div>
+								</article>
+							))}
+						</div>
 
-							<div class="mvp-upload-capabilities">
-								{capabilities.map((item) => (
-									<article class="mvp-upload-capability">
-										<div class="mvp-upload-capability__icon">
-											<span class="material-symbols-outlined">{item.icon}</span>
-										</div>
-										<div>
-											<h3>{item.title}</h3>
-											<p>{item.copy}</p>
-										</div>
-									</article>
-								))}
-							</div>
-
-					</aside>
-					</section>
-				</div>
-			</main>
+				</aside>
+				</section>
+			</div>
+		</main>
 
 		<footer class="mvp-upload-footer">
 			<div class="mvp-upload-footer__group">
 				<span>Tracelab v0.1.0-beta</span>
 				<span>Engine: Tracelab Contour Engine</span>
 			</div>
-				<div class="mvp-upload-footer__group">
-					<span class="mvp-upload-footer__indicator"><i></i>Cloud Services Active</span>
-					<span data-state-footer>State: Ready</span>
-				</div>
-			</footer>
-		</div>
+			<div class="mvp-upload-footer__group">
+				<span class="mvp-upload-footer__indicator"><i></i>Cloud Services Active</span>
+				<span data-state-footer>State: Ready</span>
+			</div>
+		</footer>
+	</div>
 
-		<script>
-			import { initVectorizerApp } from '../lib/vectorizer-app';
+	<script>
+		import { initVectorizerApp } from '../lib/vectorizer-app';
 
-			initVectorizerApp();
-		</script>
-	</body>
-</html>
+		initVectorizerApp();
+	</script>
+</BaseLayout>

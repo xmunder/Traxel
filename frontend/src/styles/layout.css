@@ -1,0 +1,27 @@
+/* layout.css — shared shell/layout helpers.
+   Skip-to-main focus styles and focus-visible helpers. */
+
+/* Skip link: visible only on focus (keyboard navigation) */
+.sr-only:focus {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: auto;
+	height: auto;
+	padding: 0.75rem 1.5rem;
+	margin: 0;
+	overflow: visible;
+	clip: auto;
+	white-space: normal;
+	background: var(--lime);
+	color: #000;
+	font-weight: 700;
+	font-size: 0.875rem;
+	z-index: 9999;
+}
+
+/* Focus-visible outline for interactive elements */
+:focus-visible {
+	outline: 2px solid var(--lime);
+	outline-offset: 2px;
+}

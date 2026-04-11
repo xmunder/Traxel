@@ -7,9 +7,10 @@
 			type="file"
 			name="image"
 			accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
+			aria-label="Choose an image file to vectorize"
 		/>
 
-		<div class="mvp-upload-card__dropzone" data-dropzone aria-describedby="upload-support upload-status upload-error">
+		<div class="mvp-upload-card__dropzone" data-dropzone role="group" aria-describedby="upload-support upload-status upload-error">
 			<div class="mvp-upload-card__icon">
 				<span class="material-symbols-outlined">cloud_upload</span>
 			</div>
@@ -23,7 +24,7 @@
 				Upload Image
 			</button>
 
-			<div class="mvp-upload-card__warning">
+			<div class="mvp-upload-card__warning" id="upload-support">
 				<span class="material-symbols-outlined">warning</span>
 				<span>Maximum file size: 5MB</span>
 			</div>

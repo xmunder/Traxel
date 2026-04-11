@@ -1,40 +1,32 @@
 ---
 import Preview from '../components/Preview.astro';
+import BaseLayout from '../layouts/BaseLayout.astro';
 import '../styles/vectorizer.css';
 ---
 
-<html class="dark" lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<link rel="icon" href="/favicon.ico" />
-		<meta name="viewport" content="width=device-width" />
-		<meta name="generator" content={Astro.generator} />
-		<link rel="preconnect" href="https://fonts.googleapis.com" />
-		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-		<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-		<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
-		<title>Tracelab — Comparison Workspace</title>
-	</head>
-	<body class="workspace-review-body">
-		<div class="workspace-review-page" data-vectorizer-app data-page="workspace" data-home-path="/" data-state="idle">
-			<header class="workspace-review-header">
-				<div class="workspace-review-header__brand">
-					<strong>Tracelab</strong>
-					<span>Comparison Workspace</span>
-				</div>
-				<a class="workspace-review-header__action" href="/">New Upload</a>
-			</header>
+<BaseLayout
+	title="Tracelab — Comparison Workspace"
+	pathname="/workspace"
+	robots="noindex, nofollow"
+	bodyClass="workspace-review-body"
+>
+	<div class="workspace-review-page" data-vectorizer-app data-page="workspace" data-home-path="/" data-state="idle">
+		<header class="workspace-review-header">
+			<div class="workspace-review-header__brand">
+				<strong>Tracelab</strong>
+				<span>Comparison Workspace</span>
+			</div>
+			<a class="workspace-review-header__action" href="/">New Upload</a>
+		</header>
 
-			<main class="workspace-review-main">
-				<Preview />
-			</main>
-		</div>
+		<main class="workspace-review-main" id="main-content">
+			<Preview />
+		</main>
+	</div>
 
-		<script>
-			import { initVectorizerApp } from '../lib/vectorizer-app';
+	<script>
+		import { initVectorizerApp } from '../lib/vectorizer-app';
 
-			initVectorizerApp();
-		</script>
-	</body>
-</html>
+		initVectorizerApp();
+	</script>
+</BaseLayout>

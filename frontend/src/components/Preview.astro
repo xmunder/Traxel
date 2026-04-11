@@ -1,9 +1,17 @@
 <section class="workspace-review-shell" aria-label="Comparison workspace">
+	<section class="workspace-review-empty" data-workspace-empty hidden>
+		<div class="workspace-review-empty__card">
+			<h2>No active comparison</h2>
+			<p>Upload an image from the portal to generate a new SVG comparison workspace.</p>
+			<a class="workspace-review-header__action" href="/">Return to portal</a>
+		</div>
+	</section>
+
 	<section class="workspace-review-ready" data-workspace-ready hidden>
 		<div class="workspace-review-stage">
 			<article class="workspace-review-panel workspace-review-panel--original">
 				<div class="workspace-review-panel__header">
-					<span>Original Image</span>
+					<h2>Original Image</h2>
 					<small data-workspace-filename>JPEG • SESSION</small>
 				</div>
 				<div class="workspace-review-panel__canvas">
@@ -13,7 +21,7 @@
 
 			<article class="workspace-review-panel workspace-review-panel--generated">
 				<div class="workspace-review-panel__header workspace-review-panel__header--generated">
-					<span>Generated SVG</span>
+					<h2>Generated SVG</h2>
 					<div class="workspace-review-panel__pills">
 						<strong>Vector</strong>
 					</div>

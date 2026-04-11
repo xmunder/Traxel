@@ -142,7 +142,26 @@ function setupDom(markup: string, fetchMock: typeof fetch): DomContext {
 
 	const cleanup = (): void => {
 		dom.window.close();
-		Object.assign(globalThis, native);
+		globalThis.window = native.window;
+		globalThis.document = native.document;
+		globalThis.DOMParser = native.DOMParser;
+		globalThis.HTMLElement = native.HTMLElement;
+		globalThis.HTMLInputElement = native.HTMLInputElement;
+		globalThis.HTMLImageElement = native.HTMLImageElement;
+		globalThis.SVGElement = native.SVGElement;
+		globalThis.Event = native.Event;
+		globalThis.Blob = native.Blob;
+		globalThis.File = native.File;
+		globalThis.FileReader = native.FileReader;
+		globalThis.FormData = native.FormData;
+		globalThis.CustomEvent = native.CustomEvent;
+		globalThis.fetch = native.fetch;
+		globalThis.sessionStorage = native.sessionStorage;
+		Object.defineProperty(globalThis, 'URL', {
+			value: native.URL,
+			configurable: true,
+			writable: true,
+		});
 	};
 
 	return {

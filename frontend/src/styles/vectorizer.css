@@ -1,69 +1,6 @@
-:root {
-	color-scheme: dark;
-	font-family: 'Inter', system-ui, sans-serif;
-	--bg: #0e0e0e;
-	--panel: #1a1a1a;
-	--panel-soft: #121212;
-	--panel-muted: #222;
-	--text: #ffffff;
-	--muted: #8f8f8f;
-	--lime: #ccff00;
-	--lime-dark: #151b00;
-	--border: #ccff00;
-	--border-soft: rgba(204, 255, 0, 0.25);
-	--shadow-hard: 4px 4px 0 0 #ccff00;
-	--shadow-hard-dark: 4px 4px 0 0 #000;
-}
-
-* {
-	box-sizing: border-box;
-}
-
-html,
-body {
-	min-height: 100%;
-}
-
-body {
-	margin: 0;
-	background:
-		linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
-		linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
-		var(--bg);
-	background-size: 40px 40px, 40px 40px, auto;
-	color: var(--text);
-}
-
-a {
-	color: inherit;
-	text-decoration: none;
-}
-
-button,
-input {
-	font: inherit;
-}
-
-img {
-	display: block;
-	max-width: 100%;
-}
-
-.sr-only {
-	position: absolute;
-	width: 1px;
-	height: 1px;
-	padding: 0;
-	margin: -1px;
-	overflow: hidden;
-	clip: rect(0, 0, 0, 0);
-	white-space: nowrap;
-	border: 0;
-}
-
-.material-icons {
-	font-size: 1.2rem;
-}
+@import './tokens.css';
+@import './base.css';
+@import './layout.css';
 
 .hero-kicker,
 .portal-branding p,
@@ -3100,6 +3037,11 @@ img {
 	display: grid;
 	place-items: center;
 	min-height: 60vh;
+}
+
+.workspace-review-empty[hidden],
+.workspace-review-ready[hidden] {
+	display: none !important;
 }
 
 .workspace-review-empty__card {

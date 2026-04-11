@@ -1,21 +1,19 @@
+@import './tokens.css';
+@import './base.css';
+@import './layout.css';
+
 /* observability.css — styles for the Tracelab Observability Panel.
-   Follows the existing dark theme tokens from vectorizer.css.          */
+   Shared tokens and resets are imported from the shared layers above.  */
 
 /* ------------------------------------------------------------------ */
-/* Shared tokens (also declared in vectorizer.css — these are safe    */
-/* overrides scoped to obs pages if vectorizer.css is not loaded)     */
+/* Body override for observability pages                               */
 /* ------------------------------------------------------------------ */
 .obs-body {
-	margin: 0;
-	min-height: 100%;
 	background:
 		linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
 		linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
-		#0e0e0e;
+		var(--bg);
 	background-size: 40px 40px, 40px 40px, auto;
-	color: #fff;
-	font-family: 'Inter', system-ui, sans-serif;
-	color-scheme: dark;
 }
 
 /* ------------------------------------------------------------------ */

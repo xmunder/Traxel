@@ -2,7 +2,7 @@
 
 # project docs and planning artifacts
 docs/
-sdd/
+openspec/
 
 # local editor settings
 .idea/

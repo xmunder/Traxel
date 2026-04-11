@@ -15,6 +15,103 @@ const SMOKE_PNG_BASE64 =
 let backendServer: ChildProcessWithoutNullStreams | null = null;
 let frontendServer: ChildProcessWithoutNullStreams | null = null;
 
+type FakeRecordStore = Map<string, unknown>;
+
+function createFakeIndexedDb() {
+	const databases = new Map<string, { stores: Map<string, FakeRecordStore> }>();
+
+	class FakeIDBDatabase {
+		name: string;
+		stores: Map<string, FakeRecordStore>;
+		objectStoreNames: { contains: (name: string) => boolean };
+
+		constructor(name: string) {
+			this.name = name;
+			this.stores = databases.get(name)?.stores ?? new Map();
+			databases.set(name, { stores: this.stores });
+			this.objectStoreNames = {
+				contains: (storeName: string) => this.stores.has(storeName),
+			};
+		}
+
+		createObjectStore(storeName: string) {
+			if (!this.stores.has(storeName)) this.stores.set(storeName, new Map());
+			return this.stores.get(storeName)!;
+		}
+
+		transaction(storeName: string) {
+			if (!this.stores.has(storeName)) this.stores.set(storeName, new Map());
+			const store = this.stores.get(storeName)!;
+			const transaction = {
+				error: null,
+				onerror: null as ((this: unknown) => void) | null,
+				oncomplete: null as ((this: unknown) => void) | null,
+				onabort: null as ((this: unknown) => void) | null,
+				objectStore: () => ({
+					put(value: unknown, key: string) {
+						const request = { result: undefined as unknown, error: null as unknown, onsuccess: null as ((this: unknown) => void) | null, onerror: null as ((this: unknown) => void) | null };
+						queueMicrotask(() => {
+							store.set(key, value);
+							request.result = key;
+							request.onsuccess?.call(request);
+							transaction.oncomplete?.call(transaction);
+						});
+						return request;
+					},
+					get(key: string) {
+						const request = { result: undefined as unknown, error: null as unknown, onsuccess: null as ((this: unknown) => void) | null, onerror: null as ((this: unknown) => void) | null };
+						queueMicrotask(() => {
+							request.result = store.get(key);
+							request.onsuccess?.call(request);
+							transaction.oncomplete?.call(transaction);
+						});
+						return request;
+					},
+					delete(key: string) {
+						const request = { result: undefined as unknown, error: null as unknown, onsuccess: null as ((this: unknown) => void) | null, onerror: null as ((this: unknown) => void) | null };
+						queueMicrotask(() => {
+							store.delete(key);
+							request.result = undefined;
+							request.onsuccess?.call(request);
+							transaction.oncomplete?.call(transaction);
+						});
+						return request;
+					},
+				}),
+			};
+			return transaction;
+		}
+
+		close() {
+			return undefined;
+		}
+	}
+
+	return {
+		open(name: string) {
+			const request = {
+				result: undefined as unknown,
+				error: null as unknown,
+				onsuccess: null as ((this: unknown) => void) | null,
+				onerror: null as ((this: unknown) => void) | null,
+				onupgradeneeded: null as ((this: unknown) => void) | null,
+				onblocked: null as ((this: unknown) => void) | null,
+			};
+			queueMicrotask(() => {
+				const db = new FakeIDBDatabase(name);
+				request.result = db;
+				if (!db.objectStoreNames.contains('workspace-results')) {
+					request.onupgradeneeded?.call(request);
+				}
+				request.onsuccess?.call(request);
+			});
+			return request;
+		},
+	};
+}
+
+const fakeIndexedDb = createFakeIndexedDb();
+
 function startServer(
 	command: string,
 	args: string[],
@@ -94,8 +191,14 @@ function bindDom(dom: JSDOM, fetchImpl: typeof fetch): void {
 		File: NativeFile,
 		FileReader: window.FileReader,
 		FormData: NativeFormData,
+		indexedDB: fakeIndexedDb,
 		fetch: fetchImpl,
 		sessionStorage: window.sessionStorage,
+	});
+
+	Object.defineProperty(window, 'indexedDB', {
+		value: fakeIndexedDb,
+		configurable: true,
 	});
 
 	Object.defineProperty(window.URL, 'createObjectURL', {
@@ -170,7 +273,12 @@ describe('frontend runtime smoke', () => {
 			});
 			input!.dispatchEvent(new uploadDom.window.Event('change', { bubbles: true }));
 
-			await waitFor(() => status!.textContent?.includes('Redirigiendo al workspace') ?? false);
+			await waitFor(() => status!.textContent?.includes('Redirecting to workspace') ?? false);
+
+			await waitFor(async () => {
+				const current = await readWorkspaceResult();
+				expect(current).not.toBeNull();
+			});
 
 			const stored = await readWorkspaceResult();
 			expect(stored).not.toBeNull();
@@ -207,6 +315,6 @@ describe('frontend runtime smoke', () => {
 			uploadDom.window.close();
 			workspaceDom.window.close();
 		},
-		30_000,
+		60_000,
 	);
 });

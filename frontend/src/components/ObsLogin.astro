@@ -8,12 +8,12 @@ const obsEndpoint = import.meta.env.PUBLIC_OBS_ENDPOINT ?? 'http://127.0.0.1:800
 		<div class="obs-login-header__subtitle">Observability Panel</div>
 	</header>
 
-	<main class="obs-login-main">
+	<div class="obs-login-main">
 		<div class="obs-login-card">
 			<h1 class="obs-login-title">Access Required</h1>
 			<p class="obs-login-copy">Enter your credentials to access the observability dashboard.</p>
 
-			<p class="obs-login-error" data-obs-login-error hidden></p>
+			<p class="obs-login-error" data-obs-login-error role="alert" hidden></p>
 
 			<form class="obs-login-form" data-obs-login-form novalidate>
 				<div class="obs-login-field">
@@ -47,5 +47,5 @@ const obsEndpoint = import.meta.env.PUBLIC_OBS_ENDPOINT ?? 'http://127.0.0.1:800
 				</button>
 			</form>
 		</div>
-	</main>
+	</div>
 </div>

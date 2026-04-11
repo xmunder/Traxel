@@ -1,27 +1,23 @@
 ---
 import ObsLogin from '../components/ObsLogin.astro';
+import BaseLayout from '../layouts/BaseLayout.astro';
 import '../styles/observability.css';
 ---
 
-<html class="dark" lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<link rel="icon" href="/favicon.ico" />
-		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<meta name="generator" content={Astro.generator} />
-		<link rel="preconnect" href="https://fonts.googleapis.com" />
-		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-		<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-		<title>Tracelab — Observability</title>
-	</head>
-	<body class="obs-body">
+<BaseLayout
+	title="Tracelab — Observability"
+	pathname="/observability"
+	robots="noindex, nofollow"
+	bodyClass="obs-body"
+	fonts="inter"
+>
+	<main id="main-content">
 		<ObsLogin />
+	</main>
 
-		<script>
-			import { initObsLogin } from '../lib/obs-auth';
+	<script>
+		import { initObsLogin } from '../lib/obs-auth';
 
-			initObsLogin();
-		</script>
-	</body>
-</html>
+		initObsLogin();
+	</script>
+</BaseLayout>

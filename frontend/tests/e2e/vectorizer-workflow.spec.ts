@@ -16,7 +16,7 @@ test('flujo e2e: upload -> workspace -> comparación -> descarga', async ({ page
 	await page.setInputFiles('[data-image-input]', fixturePath);
 
 	await expect(page).toHaveURL(/\/workspace$/);
-	await expect(page.getByText(/comparison workspace/i)).toBeVisible();
+	await expect(page.locator('.workspace-review-header__brand')).toContainText(/comparison workspace/i);
 
 	const originalImage = page.locator('[data-original-image]');
 	const svgContainer = page.locator('[data-svg-container]');

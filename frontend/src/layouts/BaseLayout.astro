@@ -1,0 +1,63 @@
+---
+import { buildHeadMeta } from '../lib/head-meta';
+
+export interface Props {
+	title: string;
+	description?: string;
+	robots?: string;
+	/** Page pathname, e.g. '/' or '/workspace'. Used for canonical URL. */
+	pathname: string;
+	/** Body CSS class — pages keep their existing body classes. */
+	bodyClass?: string;
+	/**
+	 * Which font bundle to load:
+	 * - 'full' (default): Manrope + Inter + Material Symbols (upload & workspace pages)
+	 * - 'inter': Inter only + no Material Symbols (observability pages)
+	 */
+	fonts?: 'full' | 'inter';
+}
+
+const {
+	title,
+	description,
+	robots,
+	pathname,
+	bodyClass,
+	fonts = 'full',
+} = Astro.props;
+
+const canonicalBase = Astro.site?.href ?? 'https://tracelab.app';
+
+const meta = buildHeadMeta({ title, description, canonicalBase, pathname, robots });
+---
+
+<html class="dark" lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<link rel="icon" href="/favicon.ico" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<meta name="generator" content={Astro.generator} />
+
+		<title>{meta.title}</title>
+		{meta.description && <meta name="description" content={meta.description} />}
+		<meta name="robots" content={meta.robots} />
+		<link rel="canonical" href={meta.canonical} />
+
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		{fonts === 'full' && (
+			<>
+				<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+				<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+			</>
+		)}
+		{fonts === 'inter' && (
+			<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+		)}
+	</head>
+	<body class={bodyClass}>
+		<a class="sr-only" href="#main-content">Skip to main content</a>
+		<slot />
+	</body>
+</html>
