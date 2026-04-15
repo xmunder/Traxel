@@ -4,7 +4,7 @@ test.describe('SEO — page titles and meta tags', () => {
 	test('home page has correct title and description', async ({ page }) => {
 		await page.goto('/');
 
-		await expect(page).toHaveTitle('Tracelab | System Active');
+		await expect(page).toHaveTitle('Traxel | System Active');
 		const description = page.locator('meta[name="description"]');
 		await expect(description).toHaveAttribute(
 			'content',

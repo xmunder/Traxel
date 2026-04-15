@@ -2,7 +2,7 @@
 @import './base.css';
 @import './layout.css';
 
-/* observability.css — styles for the Tracelab Observability Panel.
+/* observability.css — styles for the Traxel Observability Panel.
    Shared tokens and resets are imported from the shared layers above.  */
 
 /* ------------------------------------------------------------------ */
@@ -34,8 +34,11 @@
 }
 
 .obs-login-header__brand {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.9rem;
 	font-weight: 700;
-	font-size: 1rem;
+	font-size: 1.2rem;
 	color: #ccff00;
 }
 
@@ -160,16 +163,21 @@
 .obs-dash-header__brand {
 	display: flex;
 	align-items: center;
-	gap: 10px;
+	gap: 14px;
+}
+
+.app-brand-mark--obs {
+	box-shadow: 0 0 0 1px rgba(204, 255, 0, 0.22);
 }
 
 .obs-dash-header__brand strong {
 	color: #ccff00;
+	font-size: 1.15rem;
 }
 
 .obs-dash-header__brand span {
 	color: #8f8f8f;
-	font-size: 0.875rem;
+	font-size: 0.95rem;
 }
 
 .obs-dash-header__actions {

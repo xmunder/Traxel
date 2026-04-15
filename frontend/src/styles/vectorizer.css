@@ -171,11 +171,20 @@
 
 .portal-home__brand h1 {
 	margin: 0;
-	font-size: 1.1rem;
+	font-size: 1.35rem;
 	font-weight: 800;
 	letter-spacing: 0.08em;
 	text-transform: uppercase;
 	color: #edf4fb;
+}
+
+.app-brand-mark {
+	width: 2.4rem;
+	height: 2.4rem;
+	object-fit: cover;
+	border-radius: 0.35rem;
+	box-shadow: 0 0 0 1px rgba(145, 230, 174, 0.18);
+	flex-shrink: 0;
 }
 
 .portal-home__brand p,
@@ -2389,8 +2398,11 @@
 }
 
 .mvp-upload-header__brand {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.9rem;
 	font-family: 'Manrope', 'Inter', sans-serif;
-	font-size: 1.125rem;
+	font-size: 1.35rem;
 	font-weight: 800;
 	letter-spacing: 0.05em;
 	text-transform: uppercase;
@@ -2979,20 +2991,20 @@
 .workspace-review-header__brand {
 	display: flex;
 	align-items: center;
-	gap: 3rem;
+	gap: 1rem;
 	min-width: 0;
 }
 
 .workspace-review-header__brand strong {
 	font-family: 'Manrope', 'Inter', sans-serif;
-	font-size: 1.1rem;
+	font-size: 1.35rem;
 	font-weight: 800;
 	color: #e2e2e6;
 }
 
 .workspace-review-header__brand span {
 	font-family: 'Inter', sans-serif;
-	font-size: 0.95rem;
+	font-size: 1.05rem;
 	font-weight: 700;
 	color: #4ade80;
 }

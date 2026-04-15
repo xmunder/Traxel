@@ -4,7 +4,10 @@ const obsEndpoint = import.meta.env.PUBLIC_OBS_ENDPOINT ?? 'http://127.0.0.1:800
 
 <div class="obs-login-shell" data-obs-login data-obs-endpoint={obsEndpoint}>
 	<header class="obs-login-header">
-		<div class="obs-login-header__brand">Tracelab</div>
+		<div class="obs-login-header__brand">
+			<img class="app-brand-mark app-brand-mark--obs" src="/screen.png" alt="Traxel logo" width="28" height="28" />
+			<span>Traxel</span>
+		</div>
 		<div class="obs-login-header__subtitle">Observability Panel</div>
 	</header>
 

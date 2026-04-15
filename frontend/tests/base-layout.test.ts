@@ -7,7 +7,7 @@ import { buildHeadMeta, type HeadMetaInput } from '../src/lib/head-meta';
 
 describe('buildHeadMeta — SEO and robots meta generation', () => {
 	const baseInput: HeadMetaInput = {
-		title: 'Tracelab | System Active',
+		title: 'Traxel | System Active',
 		description: 'Convert raster images to clean, editable SVG files.',
 		canonicalBase: 'https://tracelab.app',
 		pathname: '/',
@@ -17,7 +17,7 @@ describe('buildHeadMeta — SEO and robots meta generation', () => {
 	test('generates full SEO meta for the public home page', () => {
 		const meta = buildHeadMeta(baseInput);
 
-		expect(meta.title).toBe('Tracelab | System Active');
+		expect(meta.title).toBe('Traxel | System Active');
 		expect(meta.description).toBe('Convert raster images to clean, editable SVG files.');
 		expect(meta.canonical).toBe('https://tracelab.app/');
 		expect(meta.robots).toBe('index, follow');
@@ -26,19 +26,19 @@ describe('buildHeadMeta — SEO and robots meta generation', () => {
 	test('generates noindex,nofollow for protected pages', () => {
 		const meta = buildHeadMeta({
 			...baseInput,
-			title: 'Tracelab — Comparison Workspace',
+			title: 'Traxel — Comparison Workspace',
 			pathname: '/workspace',
 			robots: 'noindex, nofollow',
 		});
 
-		expect(meta.title).toBe('Tracelab — Comparison Workspace');
+		expect(meta.title).toBe('Traxel — Comparison Workspace');
 		expect(meta.canonical).toBe('https://tracelab.app/workspace');
 		expect(meta.robots).toBe('noindex, nofollow');
 	});
 
 	test('omits description from output when not provided', () => {
 		const meta = buildHeadMeta({
-			title: 'Tracelab — Observability',
+			title: 'Traxel — Observability',
 			canonicalBase: 'https://tracelab.app',
 			pathname: '/observability',
 			robots: 'noindex, nofollow',
@@ -61,7 +61,7 @@ describe('buildHeadMeta — SEO and robots meta generation', () => {
 
 	test('defaults robots to index, follow when omitted', () => {
 		const meta = buildHeadMeta({
-			title: 'Tracelab',
+			title: 'Traxel',
 			canonicalBase: 'https://tracelab.app',
 			pathname: '/',
 		});
@@ -72,13 +72,13 @@ describe('buildHeadMeta — SEO and robots meta generation', () => {
 	test('generates distinct canonical URLs for each observability page', () => {
 		const loginMeta = buildHeadMeta({
 			...baseInput,
-			title: 'Tracelab — Observability',
+			title: 'Traxel — Observability',
 			pathname: '/observability',
 			robots: 'noindex, nofollow',
 		});
 		const dashboardMeta = buildHeadMeta({
 			...baseInput,
-			title: 'Tracelab — Dashboard',
+			title: 'Traxel — Dashboard',
 			pathname: '/observability/dashboard',
 			robots: 'noindex, nofollow',
 		});
