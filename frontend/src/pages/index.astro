@@ -36,6 +36,7 @@ const capabilities = [
 		data-vectorizer-app
 		data-page="upload"
 		data-endpoint={vectorizeEndpoint}
+		data-health-endpoint={`${backendEndpoint}/health`}
 		data-workspace-path="/workspace"
 		data-state="idle"
 	>
@@ -123,7 +124,7 @@ const capabilities = [
 				<span>Engine: Traxel Contour Engine</span>
 			</div>
 			<div class="mvp-upload-footer__group">
-				<span class="mvp-upload-footer__indicator"><i></i>Cloud Services Active</span>
+				<span class="mvp-upload-footer__indicator" data-backend-status data-status="unknown"><i></i><span data-backend-status-text>Checking backend...</span></span>
 				<span data-state-footer>State: Ready</span>
 			</div>
 		</footer>

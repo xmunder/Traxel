@@ -2846,9 +2846,19 @@
 	width: 0.5rem;
 	height: 0.5rem;
 	border-radius: 999px;
+	background: #8da0b5;
+	box-shadow: 0 0 8px rgba(141, 160, 181, 0.65);
+	display: inline-block;
+}
+
+.mvp-upload-footer__indicator[data-status='active'] i {
 	background: #4ae183;
 	box-shadow: 0 0 8px #4ae183;
-	display: inline-block;
+}
+
+.mvp-upload-footer__indicator[data-status='inactive'] i {
+	background: #ff6b6b;
+	box-shadow: 0 0 8px rgba(255, 107, 107, 0.9);
 }
 
 @media (max-width: 960px) {

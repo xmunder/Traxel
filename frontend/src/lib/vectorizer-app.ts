@@ -13,6 +13,7 @@ const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const SUPPORTED_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const SUPPORTED_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp']);
 const DEFAULT_ENDPOINT = '/vectorize';
+const HEALTH_POLL_INTERVAL_MS = 15000;
 const PROCESSING_STATUS_TITLE = 'PROCESSING';
 const PROCESSING_MESSAGES = [
 	'Validating input image...',
@@ -86,6 +87,10 @@ function sanitizeSvg(svgText: string): string {
 	svg.setAttribute('aria-label', 'Vectorized SVG preview');
 
 	return svg.outerHTML;
+}
+
+function deriveBackendBase(endpoint: string): string {
+	return endpoint.endsWith('/vectorize') ? endpoint.slice(0, -'/vectorize'.length) : endpoint;
 }
 
 function getErrorMessage(error: unknown): string {
@@ -196,6 +201,8 @@ function initUploadPage(app: HTMLElement): void {
 	const stateLabels = app.querySelectorAll<HTMLElement>('[data-state-label]');
 	const stateCopies = app.querySelectorAll<HTMLElement>('[data-state-copy]');
 	const stateFooters = app.querySelectorAll<HTMLElement>('[data-state-footer]');
+	const backendStatusIndicator = app.querySelector<HTMLElement>('[data-backend-status]');
+	const backendStatusText = app.querySelector<HTMLElement>('[data-backend-status-text]');
 
 	if (!input || !dropzone || !selectedFile || !status || !errorBox) {
 		return;
@@ -204,6 +211,30 @@ function initUploadPage(app: HTMLElement): void {
 	let state: VectorizerState = 'idle';
 	let processingMessageIndex = 0;
 	let processingMessageTimer: number | null = null;
+	let backendHealthTimer: number | null = null;
+ 	const healthEndpoint = app.dataset.healthEndpoint ?? '';
+
+	const setBackendStatus = (isHealthy: boolean): void => {
+		if (!backendStatusIndicator || !backendStatusText) return;
+		backendStatusIndicator.dataset.status = isHealthy ? 'active' : 'inactive';
+		backendStatusText.textContent = isHealthy ? 'Cloud Services Active' : 'Cloud Services Deactivated';
+	};
+
+	const checkBackendHealth = async (): Promise<void> => {
+		if (!healthEndpoint) return;
+		try {
+			const controller = new AbortController();
+			const timeoutId = window.setTimeout(() => controller.abort(), 4000);
+			const response = await fetch(healthEndpoint, {
+				method: 'GET',
+				signal: controller.signal,
+			});
+			window.clearTimeout(timeoutId);
+			setBackendStatus(response.ok);
+		} catch {
+			setBackendStatus(false);
+		}
+	};
 
 	const stopProcessingOverlay = (): void => {
 		if (processingMessageTimer !== null) {
@@ -369,6 +400,12 @@ function initUploadPage(app: HTMLElement): void {
 	};
 
 	uploadTrigger?.addEventListener('click', openFilePicker);
+	if (healthEndpoint) {
+		void checkBackendHealth();
+		backendHealthTimer = window.setInterval(() => {
+			void checkBackendHealth();
+		}, HEALTH_POLL_INTERVAL_MS);
+	}
 
 	for (const eventName of ['dragenter', 'dragover']) {
 		dropzone.addEventListener(eventName, (event) => {
