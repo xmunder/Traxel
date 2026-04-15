@@ -30,7 +30,7 @@ export default defineConfig({
 			reuseExistingServer: false,
 			timeout: 120_000,
 			env: {
-				PUBLIC_VECTORIZE_ENDPOINT: `http://127.0.0.1:${backendPort}/vectorize`,
+				PUBLIC_BACKEND_ENDPOINT: `http://127.0.0.1:${backendPort}`,
 			},
 		},
 	],

@@ -226,7 +226,7 @@ beforeAll(async () => {
 	frontendServer = startServer('pnpm', ['dev', '--host', '127.0.0.1', '--port', '4321'], {
 		cwd: '/home/msi/dev/vectorizer/frontend',
 		env: {
-			PUBLIC_VECTORIZE_ENDPOINT: BACKEND_URL,
+			PUBLIC_BACKEND_ENDPOINT: BACKEND_URL,
 		},
 	});
 

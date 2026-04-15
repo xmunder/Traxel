@@ -1,7 +1,12 @@
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _parse_csv(value: str) -> tuple[str, ...]:
+    return tuple(item.strip() for item in value.split(",") if item.strip())
 
 
 class Settings(BaseSettings):
@@ -22,13 +27,20 @@ class Settings(BaseSettings):
     default_max_colors: int = 8
     allowed_extensions: tuple[str, ...] = ("png", "jpg", "jpeg", "webp")
     allowed_content_types: tuple[str, ...] = ("image/png", "image/jpeg", "image/webp")
-    cors_allow_origins: tuple[str, ...] = (
-        "http://localhost:4321",
-        "http://127.0.0.1:4321",
-        "http://localhost:4411",
-        "http://127.0.0.1:4411",
-        "https://tracelab.pages.dev",
+    cors_allow_origins: tuple[str, ...] = _parse_csv(
+        "http://localhost:4321,"
+        "http://127.0.0.1:4321,"
+        "http://localhost:4411,"
+        "http://127.0.0.1:4411,"
+        "https://traxel.pages.dev"
     )
+
+    @field_validator("cors_allow_origins", mode="before")
+    @classmethod
+    def parse_cors_allow_origins(cls, value: str | tuple[str, ...]) -> tuple[str, ...]:
+        if isinstance(value, str):
+            return _parse_csv(value)
+        return value
 
     # ------------------------------------------------------------------ #
     # Observability panel                                                  #

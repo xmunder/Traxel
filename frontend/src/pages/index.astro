@@ -3,7 +3,8 @@ import UploadZone from '../components/UploadZone.astro';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import '../styles/vectorizer.css';
 
-const vectorizeEndpoint = import.meta.env.PUBLIC_VECTORIZE_ENDPOINT ?? 'http://127.0.0.1:8000/vectorize';
+const backendEndpoint = import.meta.env.PUBLIC_BACKEND_ENDPOINT ?? 'http://127.0.0.1:8000';
+const vectorizeEndpoint = `${backendEndpoint}/vectorize`;
 
 const capabilities = [
 	{

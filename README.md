@@ -34,14 +34,14 @@ docker compose down
 
 El `compose.yml` deja estos overrides disponibles:
 
-- `PUBLIC_VECTORIZE_ENDPOINT`
+- `PUBLIC_BACKEND_ENDPOINT`
 - `LOG_LEVEL`
 - `DEPLOYMENT_ENVIRONMENT`
 
 Ejemplo:
 
 ```bash
-PUBLIC_VECTORIZE_ENDPOINT=http://localhost:8000/vectorize docker compose up --build
+PUBLIC_BACKEND_ENDPOINT=http://localhost:8000 docker compose up --build
 ```
 
 ## Comandos básicos
@@ -68,5 +68,5 @@ docker compose build --no-cache
 ## Tradeoffs de esta versión
 
 - El frontend corre en modo `astro dev` para priorizar simplicidad y feedback rápido en MVP.
-- `PUBLIC_VECTORIZE_ENDPOINT` apunta por default a `http://localhost:8000/vectorize` porque el `fetch` lo hace el navegador del usuario, no el contenedor frontend.
+- `PUBLIC_BACKEND_ENDPOINT` apunta por default a `http://localhost:8000`; el frontend deriva desde ahí `/vectorize` y `/obs/*` porque el `fetch` lo hace el navegador del usuario, no el contenedor frontend.
 - El flujo del MVP queda centrado en Docker Compose para reducir diferencias entre entornos locales.

@@ -3,7 +3,7 @@ import ObsDashboard from '../../components/ObsDashboard.astro';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import '../../styles/observability.css';
 
-const obsEndpoint = import.meta.env.PUBLIC_OBS_ENDPOINT ?? 'http://127.0.0.1:8000';
+const obsEndpoint = import.meta.env.PUBLIC_BACKEND_ENDPOINT ?? 'http://127.0.0.1:8000';
 ---
 
 <BaseLayout

@@ -27,7 +27,7 @@ services:
       backend:
         condition: service_healthy
     environment:
-      PUBLIC_VECTORIZE_ENDPOINT: ${PUBLIC_VECTORIZE_ENDPOINT:-http://localhost:8000/vectorize}
+      PUBLIC_BACKEND_ENDPOINT: ${PUBLIC_BACKEND_ENDPOINT:-http://localhost:8000}
     ports:
       - "4321:4321"
     networks:

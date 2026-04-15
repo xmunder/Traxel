@@ -6,7 +6,7 @@ Frontend Astro del MVP. Su trabajo es simple: recibir una imagen en `/`, enviarl
 
 1. `/` renderiza la landing + `UploadZone`.
 2. `src/lib/vectorizer-app.ts` valida el archivo en cliente.
-3. Si el archivo es válido, hace `fetch` al endpoint configurado en `PUBLIC_VECTORIZE_ENDPOINT`.
+3. Si el archivo es válido, hace `fetch` al backend configurado en `PUBLIC_BACKEND_ENDPOINT` y deriva `/vectorize` desde esa base.
 4. Si el backend responde OK, intenta guardar el resultado en IndexedDB.
    - Si IndexedDB **funciona** → navega a `/workspace`.
    - Si IndexedDB **falla** (incógnito, Safari restringido, cuota llena) → descarga automáticamente el SVG y el usuario permanece en `/`.
@@ -75,7 +75,7 @@ Si IndexedDB no está disponible, el SVG se descarga automáticamente y el usuar
 
 ```bash
 pnpm install
-PUBLIC_VECTORIZE_ENDPOINT=http://127.0.0.1:8000/vectorize pnpm dev --host 127.0.0.1 --port 4321 --strictPort
+PUBLIC_BACKEND_ENDPOINT=http://127.0.0.1:8000 pnpm dev --host 127.0.0.1 --port 4321 --strictPort
 ```
 
 ### Opción 2: levantar backend + frontend juntos
