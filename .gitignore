@@ -1,8 +1,15 @@
 .DS_Store
 
 # project docs and planning artifacts
-docs/
+docs/*
+!docs/images/
+!docs/images/*.png
+!docs/media/
+docs/media/*
+!docs/media/*.gif
+docs/media/.playwright-artifacts/
 openspec/
+.atl/
 
 # local editor settings
 .idea/
