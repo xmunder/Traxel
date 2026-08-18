@@ -15,6 +15,23 @@ function readComponent(filename: string): string {
 	return readFileSync(resolve(COMPONENTS_DIR, filename), 'utf-8');
 }
 
+function readLayout(filename: string): string {
+	return readFileSync(resolve(LAYOUTS_DIR, filename), 'utf-8');
+}
+
+describe('Traxel app icon', () => {
+	test('uses the current app icon for the favicon and observability branding', () => {
+		const layout = readLayout('BaseLayout.astro');
+		const login = readComponent('ObsLogin.astro');
+		const dashboard = readComponent('ObsDashboard.astro');
+
+		expect(layout).toContain('href="/favicon.svg"');
+		expect(layout).not.toContain('href="/screen.png"');
+		expect(login).toContain('src="/favicon.svg"');
+		expect(dashboard).toContain('src="/favicon.svg"');
+	});
+});
+
 describe('index.astro — BaseLayout integration and SEO', () => {
 	test('imports and uses BaseLayout instead of inline <html>/<head>', () => {
 		const page = readPage('index.astro');
