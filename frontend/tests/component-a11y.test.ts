@@ -44,10 +44,12 @@ describe('UploadZone.astro — accessibility improvements', () => {
 		expect(component).toMatch(/data-upload-trigger[^>]*>[\s\S]*?Upload/);
 	});
 
-	test('file size warning has an id for aria-describedby reference', () => {
+	test('does not keep stale support-copy markup in the simplified card', () => {
 		const component = readComponent('UploadZone.astro');
-		// The warning about max file size should have an id so it can be referenced
-		expect(component).toMatch(/id\s*=\s*"upload-support"/);
+		expect(component).not.toContain('upload-support');
+		expect(component).not.toContain('Supported Formats');
+		expect(component).not.toContain('Optimized for logos');
+		expect(component).not.toContain('Waiting for an image to vectorize.');
 	});
 });
 
@@ -58,6 +60,25 @@ describe('Preview.astro — heading levels and labeled regions', () => {
 		expect(component).not.toMatch(/<h1[\s>]/);
 		// Should have h2 for section-level headings
 		expect(component).toMatch(/<h2[\s>]/);
+	});
+
+	test('provides a labeled palette region, reset-all control, and polite persistence status', () => {
+		const component = readComponent('Preview.astro');
+		expect(component).toMatch(/data-palette-panel[^>]*aria-labelledby="palette-heading"/);
+		expect(component).toMatch(/id="palette-heading"[^>]*>\s*Edit colors/);
+		expect(component).toMatch(/data-palette-reset-all[^>]*>\s*Reset all colors/);
+		expect(component).toMatch(/data-persistence-status[^>]*aria-live="polite"/);
+	});
+});
+
+describe('HeroArtwork.astro — decorative artwork accessibility', () => {
+	test('marks the wrapper as aria-hidden and renders a non-interactive mesh', () => {
+		const component = readComponent('HeroArtwork.astro');
+		expect(component).toMatch(/class="mvp-upload-artwork"[^>]*aria-hidden="true"/);
+		expect(component).toContain('data-hero-artwork');
+		expect(component).toContain('data-hero-mesh');
+		expect(component).toContain('<svg');
+		expect(component).not.toContain('<canvas');
 	});
 });
 

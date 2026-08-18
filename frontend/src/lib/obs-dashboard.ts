@@ -1,6 +1,6 @@
 // obs-dashboard.ts — fetches /obs/* endpoints and wires the dashboard UI.
 
-import { clearCredentials, encodeBasic, loadCredentials, obsNavigateTo, requireAuth } from './obs-auth';
+import { clearCredentials, encodeBasic, obsNavigateTo, requireAuth } from './obs-auth';
 import { bindBrushInteraction, type ObsBucket, initObsChart, setOnBrushSelect, updateObsChart } from './obs-chart';
 import { formatLastUpdated, formatTimestamp } from './obs-time';
 
@@ -101,31 +101,17 @@ export async function fetchDashboardData(
 }> {
 	const qs = buildFilterQuery(filters);
 
-	const fetches: [
-		Promise<ObsSummary>,
-		Promise<{ items: ObsRequestItem[]; total: number }>,
-		Promise<{ items: ObsErrorItem[]; total: number }>,
-		Promise<ObsTimeseriesResponse> | null,
-	] = [
+	const timeseriesPromise: Promise<ObsTimeseriesResponse | undefined> =
+		qs || filters.range
+			? fetchObs<ObsTimeseriesResponse>(`${endpoint}/obs/timeseries${qs}`, authHeader)
+			: Promise.resolve(undefined);
+
+	const [summaryData, requestsData, errorsData, timeseriesData] = await Promise.all([
 		fetchObs<ObsSummary>(`${endpoint}/obs/summary${qs}`, authHeader),
 		fetchObs<{ items: ObsRequestItem[]; total: number }>(`${endpoint}/obs/requests${qs}`, authHeader),
 		fetchObs<{ items: ObsErrorItem[]; total: number }>(`${endpoint}/obs/errors${qs}`, authHeader),
-		null,
-	];
-
-	// Always fetch timeseries when filters are active (advanced mode)
-	if (qs || filters.range) {
-		fetches[3] = fetchObs<ObsTimeseriesResponse>(`${endpoint}/obs/timeseries${qs}`, authHeader);
-	}
-
-	const results = await Promise.all(
-		fetches.filter((f): f is Promise<unknown> => f !== null),
-	);
-
-	const summaryData = results[0] as ObsSummary;
-	const requestsData = results[1] as { items: ObsRequestItem[]; total: number };
-	const errorsData = results[2] as { items: ObsErrorItem[]; total: number };
-	const timeseriesData = results.length > 3 ? (results[3] as ObsTimeseriesResponse) : undefined;
+		timeseriesPromise,
+	]);
 
 	return {
 		summary: summaryData,
@@ -252,11 +238,11 @@ function statusClass(code: number): string {
 
 function escapeHtml(str: string): string {
 	return str
-		.replace(/&/g, '&amp;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;')
-		.replace(/"/g, '&quot;')
-		.replace(/'/g, '&#39;');
+		.replaceAll('&', '&amp;')
+		.replaceAll('<', '&lt;')
+		.replaceAll('>', '&gt;')
+		.replaceAll('"', '&quot;')
+		.replaceAll("'", '&#39;');
 }
 
 // ---------------------------------------------------------------------------
@@ -345,7 +331,7 @@ export function initObsDashboard(): void {
 		if (rangeSelect) filters.range = rangeSelect.value;
 		if (statusSelect) filters.status = statusSelect.value;
 		if (limitSelect) {
-			const limitVal = parseInt(limitSelect.value, 10);
+			const limitVal = Number.parseInt(limitSelect.value, 10);
 			if (limitVal > 0) filters.limit = limitVal;
 		}
 		if (zoomFromTs) filters.from_ts = zoomFromTs;
@@ -428,7 +414,7 @@ export function initObsDashboard(): void {
 	// Wire auto-refresh select (advanced)
 	if (refreshSelect) {
 		refreshSelect.addEventListener('change', () => {
-			const intervalMs = parseInt(refreshSelect.value, 10);
+			const intervalMs = Number.parseInt(refreshSelect.value, 10);
 			if (intervalMs > 0) {
 				startAutoRefresh(intervalMs);
 			} else {
@@ -470,5 +456,4 @@ export function initObsDashboard(): void {
 	void refresh();
 }
 
-// Re-export for tests
-export { loadCredentials, clearCredentials };
+export { clearCredentials, loadCredentials } from './obs-auth';

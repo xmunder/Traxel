@@ -95,6 +95,23 @@ describe('workspace-storage: IndexedDB fallback (no indexedDB available)', () =>
 		const result = await readWorkspaceResult();
 		expect(result?.filename).toBe('second.png');
 	});
+
+	test('legacy records use their current SVG as the immutable reset baseline', async () => {
+		await saveWorkspaceResult(buildResult({ svg: '<svg><path fill="#123456"/></svg>' }));
+
+		const recovered = await readWorkspaceResult();
+		expect(recovered?.originalSvg).toBe('<svg><path fill="#123456"/></svg>');
+	});
+
+	test('the latest edit is saved without replacing its original SVG baseline', async () => {
+		const baseline = '<svg><path fill="#ABCDEF"/></svg>';
+		await saveWorkspaceResult(buildResult({ svg: baseline, originalSvg: baseline }));
+		await saveWorkspaceResult(buildResult({ svg: '<svg><path fill="#123456"/></svg>', originalSvg: baseline }));
+
+		const recovered = await readWorkspaceResult();
+		expect(recovered?.svg).toContain('#123456');
+		expect(recovered?.originalSvg).toBe(baseline);
+	});
 });
 
 describe('workspace-storage: con indexedDB disponible (via fake-indexeddb)', () => {
@@ -146,11 +163,7 @@ describe('workspace-storage: WorkspaceStorageError', () => {
 		expect((error as Error & { cause?: unknown }).cause).toBe(cause);
 	});
 
-	test('saveWorkspaceResult hace fallback a memoria cuando IndexedDB está disponible pero falla', async () => {
-		// Skip if indexedDB is not defined (already covered by the SSR fallback suite above).
-		if (typeof indexedDB === 'undefined') {
-			return;
-		}
+	test.skipIf(typeof indexedDB === 'undefined')('saveWorkspaceResult hace fallback a memoria cuando IndexedDB está disponible pero falla', async () => {
 
 		const originalOpen = indexedDB.open.bind(indexedDB);
 		const openSpy = vi.spyOn(indexedDB, 'open').mockImplementation((...args) => {

@@ -32,6 +32,19 @@
 			</article>
 		</div>
 
+		<section class="workspace-palette" data-palette-panel aria-labelledby="palette-heading" hidden>
+			<div class="workspace-palette__header">
+				<div>
+					<p class="workspace-palette__eyebrow">Local SVG adjustments</p>
+					<h2 id="palette-heading">Edit colors</h2>
+				</div>
+				<button class="workspace-palette__reset-all" type="button" data-palette-reset-all>Reset all colors</button>
+			</div>
+			<p class="workspace-palette__description">Refine each source color. Preview and download stay synchronized.</p>
+			<div class="workspace-palette__rows" data-palette-rows></div>
+			<p class="workspace-palette__status" data-persistence-status aria-live="polite"></p>
+		</section>
+
 		<div class="workspace-review-toolbar">
 			<div class="workspace-review-toolbar__metrics">
 				<div class="workspace-review-metric">

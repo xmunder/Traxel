@@ -2,4 +2,4 @@ User-agent: *
 Allow: /
 Disallow: /observability/
 
-Sitemap: https://tracelab.app/sitemap-index.xml
+Sitemap: https://traxel.pages.dev/sitemap-index.xml

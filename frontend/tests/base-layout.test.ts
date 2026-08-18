@@ -9,7 +9,7 @@ describe('buildHeadMeta — SEO and robots meta generation', () => {
 	const baseInput: HeadMetaInput = {
 		title: 'Traxel | System Active',
 		description: 'Convert raster images to clean, editable SVG files.',
-		canonicalBase: 'https://tracelab.app',
+		canonicalBase: 'https://traxel.pages.dev',
 		pathname: '/',
 		robots: 'index, follow',
 	};
@@ -19,7 +19,7 @@ describe('buildHeadMeta — SEO and robots meta generation', () => {
 
 		expect(meta.title).toBe('Traxel | System Active');
 		expect(meta.description).toBe('Convert raster images to clean, editable SVG files.');
-		expect(meta.canonical).toBe('https://tracelab.app/');
+		expect(meta.canonical).toBe('https://traxel.pages.dev/');
 		expect(meta.robots).toBe('index, follow');
 	});
 
@@ -32,14 +32,14 @@ describe('buildHeadMeta — SEO and robots meta generation', () => {
 		});
 
 		expect(meta.title).toBe('Traxel — Comparison Workspace');
-		expect(meta.canonical).toBe('https://tracelab.app/workspace');
+		expect(meta.canonical).toBe('https://traxel.pages.dev/workspace');
 		expect(meta.robots).toBe('noindex, nofollow');
 	});
 
 	test('omits description from output when not provided', () => {
 		const meta = buildHeadMeta({
 			title: 'Traxel — Observability',
-			canonicalBase: 'https://tracelab.app',
+			canonicalBase: 'https://traxel.pages.dev',
 			pathname: '/observability',
 			robots: 'noindex, nofollow',
 		});
@@ -51,18 +51,18 @@ describe('buildHeadMeta — SEO and robots meta generation', () => {
 	test('handles trailing slash on canonicalBase correctly', () => {
 		const meta = buildHeadMeta({
 			...baseInput,
-			canonicalBase: 'https://tracelab.app/',
+			canonicalBase: 'https://traxel.pages.dev/',
 			pathname: '/workspace',
 		});
 
 		// Should NOT produce double slash
-		expect(meta.canonical).toBe('https://tracelab.app/workspace');
+		expect(meta.canonical).toBe('https://traxel.pages.dev/workspace');
 	});
 
 	test('defaults robots to index, follow when omitted', () => {
 		const meta = buildHeadMeta({
 			title: 'Traxel',
-			canonicalBase: 'https://tracelab.app',
+			canonicalBase: 'https://traxel.pages.dev',
 			pathname: '/',
 		});
 
@@ -83,8 +83,8 @@ describe('buildHeadMeta — SEO and robots meta generation', () => {
 			robots: 'noindex, nofollow',
 		});
 
-		expect(loginMeta.canonical).toBe('https://tracelab.app/observability');
-		expect(dashboardMeta.canonical).toBe('https://tracelab.app/observability/dashboard');
+		expect(loginMeta.canonical).toBe('https://traxel.pages.dev/observability');
+		expect(dashboardMeta.canonical).toBe('https://traxel.pages.dev/observability/dashboard');
 		expect(loginMeta.canonical).not.toBe(dashboardMeta.canonical);
 	});
 
@@ -116,6 +116,10 @@ describe('BaseLayout.astro — structural contract', () => {
 
 	test('includes canonical link from buildHeadMeta output', () => {
 		expect(layout).toMatch(/<link\s+rel="canonical"\s+href=\{meta\.canonical\}/);
+	});
+
+	test('uses the configured production origin as canonical fallback', () => {
+		expect(layout).toContain("Astro.site?.href ?? 'https://traxel.pages.dev/'");
 	});
 
 	test('conditionally renders description meta only when provided', () => {

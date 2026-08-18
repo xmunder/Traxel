@@ -1,3 +1,7 @@
+---
+import { Upload } from '@lucide/astro';
+---
+
 <section class="mvp-upload-card" aria-labelledby="upload-title">
 	<form class="mvp-upload-card__frame" data-upload-form novalidate>
 		<input
@@ -10,28 +14,43 @@
 			aria-label="Choose an image file to vectorize"
 		/>
 
-		<div class="mvp-upload-card__dropzone" data-dropzone role="group" aria-describedby="upload-support upload-status upload-error">
-			<div class="mvp-upload-card__icon">
-				<span class="material-symbols-outlined">cloud_upload</span>
+		<div class="mvp-upload-card__tilt">
+			<div class="mvp-upload-card__shadow" aria-hidden="true"></div>
+			<div class="mvp-upload-card__dropzone" data-dropzone role="group" aria-describedby="upload-status upload-error">
+				<button
+					type="button"
+					class="mvp-upload-card__surface-trigger"
+					data-upload-surface
+					data-upload-trigger
+					aria-labelledby="upload-title"
+					aria-describedby="upload-status upload-error"
+				>
+					<span class="sr-only">Choose an image file to vectorize</span>
+				</button>
+				<div class="mvp-upload-card__sheen" aria-hidden="true"></div>
+
+				<div class="mvp-upload-card__title-group">
+					<h2 id="upload-title">Drag and Drop</h2>
+
+					<div class="mvp-upload-card__icon" aria-hidden="true">
+						<Upload aria-hidden="true" focusable="false" stroke-width={2.2} />
+						<div class="mvp-upload-card__icon-bar"></div>
+					</div>
+				</div>
+
+				<div class="mvp-upload-card__button-wrap">
+					<span class="mvp-upload-card__button-bracket mvp-upload-card__button-bracket--left" aria-hidden="true"></span>
+					<button type="button" class="mvp-upload-card__button neon-btn" data-upload-trigger>
+						Upload Image
+					</button>
+					<span class="mvp-upload-card__button-bracket mvp-upload-card__button-bracket--right" aria-hidden="true"></span>
+				</div>
+
+				<p class="mvp-upload-card__microcopy" data-selected-file>OR SELECT A LOCAL FILE</p>
+				<p class="mvp-upload-card__statecopy sr-only" data-state-copy aria-live="polite"></p>
+				<p class="status-line" id="upload-status" data-status aria-live="polite"></p>
+				<p class="error-line" id="upload-error" data-error aria-live="assertive" hidden></p>
 			</div>
-
-			<div class="mvp-upload-card__copy">
-				<h2 id="upload-title">Drag your artwork here</h2>
-				<p class="mvp-upload-card__microcopy">or select a local file</p>
-			</div>
-
-			<button type="button" class="mvp-upload-card__button" data-upload-trigger>
-				Upload Image
-			</button>
-
-			<div class="mvp-upload-card__warning" id="upload-support">
-				<span class="material-symbols-outlined">warning</span>
-				<span>Maximum file size: 5MB</span>
-			</div>
-
-			<p class="mvp-upload-card__statecopy" data-state-copy>Waiting for an image to vectorize.</p>
-			<p class="status-line" id="upload-status" data-status aria-live="polite"></p>
-			<p class="error-line" id="upload-error" data-error aria-live="assertive" hidden></p>
 		</div>
 	</form>
 </section>

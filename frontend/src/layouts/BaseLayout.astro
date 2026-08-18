@@ -13,8 +13,9 @@ export interface Props {
 	 * Which font bundle to load:
 	 * - 'full' (default): Manrope + Inter + Material Symbols (upload & workspace pages)
 	 * - 'inter': Inter only + no Material Symbols (observability pages)
+	 * - 'traxel': Orbitron + Rajdhani (reference landing)
 	 */
-	fonts?: 'full' | 'inter';
+	fonts?: 'full' | 'inter' | 'traxel';
 }
 
 const {
@@ -26,7 +27,7 @@ const {
 	fonts = 'full',
 } = Astro.props;
 
-const canonicalBase = Astro.site?.href ?? 'https://tracelab.app';
+const canonicalBase = Astro.site?.href ?? 'https://traxel.pages.dev/';
 
 const meta = buildHeadMeta({ title, description, canonicalBase, pathname, robots });
 ---
@@ -34,10 +35,14 @@ const meta = buildHeadMeta({ title, description, canonicalBase, pathname, robots
 <html class="dark" lang="en">
 	<head>
 		<meta charset="utf-8" />
-		<link rel="icon" type="image/png" href="/screen.png" />
-		<link rel="apple-touch-icon" href="/screen.png" />
+		<link rel="icon" type="image/png" href="/icon-light-32x32.png" media="(prefers-color-scheme: light)" />
+		<link rel="icon" type="image/png" href="/icon-dark-32x32.png" media="(prefers-color-scheme: dark)" />
+		<link rel="icon" type="image/svg+xml" href="/icon.svg" />
+		<link rel="apple-touch-icon" href="/apple-icon.png" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<meta name="generator" content={Astro.generator} />
+		<meta name="theme-color" content="#0b0f0c" />
+		<meta name="color-scheme" content="dark" />
 
 		<title>{meta.title}</title>
 		{meta.description && <meta name="description" content={meta.description} />}
@@ -54,6 +59,9 @@ const meta = buildHeadMeta({ title, description, canonicalBase, pathname, robots
 		)}
 		{fonts === 'inter' && (
 			<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+		)}
+		{fonts === 'traxel' && (
+			<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
 		)}
 	</head>
 	<body class={bodyClass}>

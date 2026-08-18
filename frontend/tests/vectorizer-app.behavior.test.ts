@@ -24,8 +24,9 @@ type DomContext = {
 	uploadTrigger: HTMLElement | null;
 	status: HTMLElement | null;
 	errorBox: HTMLElement | null;
-	warning: HTMLElement | null;
 	processingOverlay: HTMLElement | null;
+	createObjectURL: ReturnType<typeof vi.fn>;
+	revokeObjectURL: ReturnType<typeof vi.fn>;
 	cleanup: () => void;
 };
 
@@ -37,17 +38,13 @@ function createUploadMarkup(): string {
 				<p data-processing-message>Preparing vectorization...</p>
 				<strong data-selected-file>No file selected.</strong>
 			</div>
-			<section data-warning>
-				<strong>NON-BLOCKING NOTICE</strong>
-				<span>Optimized for logos & icons. Complex photos may lose fidelity, but the upload flow stays available.</span>
-			</section>
 			<form data-upload-form>
 				<input data-image-input type="file" />
 				<div data-dropzone aria-busy="false"></div>
 				<button type="button" data-upload-trigger>UPLOAD IMAGE</button>
 				<span data-state-label>READY</span>
-				<p data-state-copy>Waiting for an image to vectorize.</p>
-				<p data-status>Waiting for an image to vectorize.</p>
+				<p data-state-copy></p>
+				<p data-status></p>
 				<p data-error hidden></p>
 				<strong data-state-footer>STATE: IDLE</strong>
 			</form>
@@ -71,6 +68,11 @@ function createWorkspaceMarkup(): string {
 				<img data-original-image alt="original" />
 				<div data-svg-container></div>
 				<a data-download-link href="#" aria-disabled="true">DOWNLOAD_SVG_V1</a>
+				<section data-palette-panel hidden aria-label="Editable color palette">
+					<div data-palette-rows></div>
+					<button type="button" data-palette-reset-all>Reset all colors</button>
+					<p data-persistence-status aria-live="polite"></p>
+				</section>
 				<dd data-metadata-colors>—</dd>
 				<dd data-metadata-paths>—</dd>
 				<dd data-metadata-bezier>—</dd>
@@ -104,7 +106,8 @@ function setupDom(markup: string, fetchMock: typeof fetch): DomContext {
 		fetch: globalThis.fetch,
 		sessionStorage: globalThis.sessionStorage,
 	};
-	const createObjectURL = vi.fn(() => 'blob:vectorizer-download');
+	let objectUrlIndex = 0;
+	const createObjectURL = vi.fn(() => `blob:vectorizer-${++objectUrlIndex}`);
 	const revokeObjectURL = vi.fn();
 
 	Object.assign(globalThis, {
@@ -171,8 +174,9 @@ function setupDom(markup: string, fetchMock: typeof fetch): DomContext {
 		uploadTrigger: dom.window.document.querySelector('[data-upload-trigger]'),
 		status: dom.window.document.querySelector('[data-status]'),
 		errorBox: dom.window.document.querySelector('[data-error]'),
-		warning: dom.window.document.querySelector('[data-warning]'),
 		processingOverlay: dom.window.document.querySelector('[data-processing-overlay]'),
+		createObjectURL,
+		revokeObjectURL,
 		cleanup,
 	};
 }
@@ -302,6 +306,31 @@ describe('Session Storage Deprecation > Storage migration', () => {
 });
 
 describe('vectorizer app UI behavior', () => {
+	test('stores the sanitized upload as both current SVG and reset baseline', async () => {
+		const fetchMock = buildFetchMock({
+			ok: true,
+			status: 200,
+			body: {
+				svg: '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><script>alert(1)</script><path fill="#f00" onclick="bad()"/></svg>',
+				metadata: { colors_detected: 1, paths_generated: 1, duration_ms: 4 },
+			},
+		});
+		const context = setupDom(createUploadMarkup(), fetchMock as unknown as typeof fetch);
+
+		try {
+			await uploadFile(context, createPngFile('sanitize.png'));
+			await waitFor(async () => expect(await readWorkspaceResult()).not.toBeNull());
+
+			const stored = await readWorkspaceResult();
+			expect(stored?.svg).not.toContain('<script');
+			expect(stored?.svg).not.toContain('onclick');
+			expect(stored?.svg).not.toContain('width="10"');
+			expect(stored?.originalSvg).toBe(stored?.svg);
+		} finally {
+			context.cleanup();
+		}
+	});
+
 	test('el CTA principal abre el selector de archivo', async () => {
 		const fetchMock = vi.fn();
 		const context = setupDom(createUploadMarkup(), fetchMock as unknown as typeof fetch);
@@ -318,7 +347,7 @@ describe('vectorizer app UI behavior', () => {
 		}
 	});
 
-	test('mantiene warning visible y guarda el resultado para el workspace', async () => {
+	test('guarda el resultado para el workspace sin renderizar copia estática rechazada', async () => {
 		const fetchMock = buildFetchMock({
 			ok: true,
 			status: 200,
@@ -330,7 +359,8 @@ describe('vectorizer app UI behavior', () => {
 		const context = setupDom(createUploadMarkup(), fetchMock as unknown as typeof fetch);
 
 		try {
-			expect(context.warning?.textContent).toContain('Optimized for logos & icons');
+			expect(context.document.body.textContent).not.toContain('Optimized for logos');
+			expect(context.document.body.textContent).not.toContain('Waiting for an image to vectorize.');
 
 			const navigationListener = vi.fn();
 			const svgDownloadListener = vi.fn();
@@ -483,6 +513,110 @@ describe('vectorizer app UI behavior', () => {
 			}
 		} finally {
 			uploadContext.cleanup();
+		}
+	});
+
+	test('a valid palette edit synchronizes preview, download, persistence, and does not fetch', async () => {
+		const originalSvg = '<svg xmlns="http://www.w3.org/2000/svg"><path fill="#FF0000"/><path fill="#00FF00"/><path fill="#FF0000"/></svg>';
+		await saveWorkspaceResult({
+			filename: 'palette.png',
+			originalFile: createPngFile('palette.png'),
+			svg: originalSvg,
+			originalSvg,
+			metadata: { colors_detected: 2, paths_generated: 3, duration_ms: 5 },
+			storedAt: new Date().toISOString(),
+		});
+		const fetchMock = vi.fn();
+		const context = setupDom(createWorkspaceMarkup(), fetchMock as unknown as typeof fetch);
+
+		try {
+			await waitFor(() => {
+				expect(context.document.querySelectorAll('[data-palette-row]')).toHaveLength(2);
+			});
+			const input = context.document.querySelector<HTMLInputElement>('[data-palette-hex][data-source="#FF0000"]');
+			expect(input?.value).toBe('#FF0000');
+			const previousDownload = context.document.querySelector<HTMLAnchorElement>('[data-download-link]')?.getAttribute('href');
+
+			input!.value = '#123456';
+			input!.dispatchEvent(new context.window.Event('input', { bubbles: true }));
+
+			await waitFor(async () => {
+				const fills = Array.from(context.document.querySelectorAll('[data-svg-container] path')).map((path) => path.getAttribute('fill'));
+				expect(fills).toEqual(['#123456', '#00FF00', '#123456']);
+				expect((await readWorkspaceResult())?.svg).toContain('#123456');
+			});
+			expect(input?.getAttribute('aria-invalid')).toBe('false');
+			expect(context.document.querySelector<HTMLAnchorElement>('[data-download-link]')?.getAttribute('href')).not.toBe(previousDownload);
+			expect(context.document.querySelector('[data-persistence-status]')?.textContent).toContain('session only');
+			expect(context.revokeObjectURL).toHaveBeenCalledWith(previousDownload);
+			expect(fetchMock).not.toHaveBeenCalled();
+
+			context.window.dispatchEvent(new context.window.Event('pagehide'));
+			expect(context.revokeObjectURL).toHaveBeenCalledWith('blob:vectorizer-1');
+			expect(context.revokeObjectURL).toHaveBeenCalledWith(
+				context.document.querySelector<HTMLAnchorElement>('[data-download-link]')?.getAttribute('href'),
+			);
+		} finally {
+			context.cleanup();
+		}
+	});
+
+	test('invalid text is announced without changing preview, export, or the current replacement', async () => {
+		const originalSvg = '<svg xmlns="http://www.w3.org/2000/svg"><path fill="#ABCDEF"/></svg>';
+		await saveWorkspaceResult({
+			filename: 'invalid.png', originalFile: createPngFile('invalid.png'), svg: originalSvg, originalSvg,
+			metadata: { colors_detected: 1, paths_generated: 1, duration_ms: 5 }, storedAt: new Date().toISOString(),
+		});
+		const context = setupDom(createWorkspaceMarkup(), vi.fn() as unknown as typeof fetch);
+
+		try {
+			await waitFor(() => expect(context.document.querySelectorAll('[data-palette-row]')).toHaveLength(1));
+			const input = context.document.querySelector<HTMLInputElement>('[data-palette-hex]')!;
+			const downloadBefore = context.document.querySelector<HTMLAnchorElement>('[data-download-link]')?.getAttribute('href');
+			input.value = '#12';
+			input.dispatchEvent(new context.window.Event('input', { bubbles: true }));
+
+			expect(input.getAttribute('aria-invalid')).toBe('true');
+			expect(context.document.querySelector('[data-svg-container] path')?.getAttribute('fill')).toBe('#ABCDEF');
+			expect(context.document.querySelector<HTMLAnchorElement>('[data-download-link]')?.getAttribute('href')).toBe(downloadBefore);
+			expect((await readWorkspaceResult())?.svg).not.toContain('#12');
+		} finally {
+			context.cleanup();
+		}
+	});
+
+	test('row and global reset controls restore only their intended source colors', async () => {
+		const originalSvg = '<svg xmlns="http://www.w3.org/2000/svg"><path fill="#FF0000"/><path fill="#00FF00"/></svg>';
+		await saveWorkspaceResult({
+			filename: 'reset.png', originalFile: createPngFile('reset.png'), svg: originalSvg, originalSvg,
+			metadata: { colors_detected: 2, paths_generated: 2, duration_ms: 5 }, storedAt: new Date().toISOString(),
+		});
+		const context = setupDom(createWorkspaceMarkup(), vi.fn() as unknown as typeof fetch);
+
+		try {
+			await waitFor(() => expect(context.document.querySelectorAll('[data-palette-row]')).toHaveLength(2));
+			for (const [source, next] of [['#FF0000', '#111111'], ['#00FF00', '#222222']]) {
+				const input = context.document.querySelector<HTMLInputElement>(`[data-palette-hex][data-source="${source}"]`)!;
+				input.value = next;
+				input.dispatchEvent(new context.window.Event('input', { bubbles: true }));
+			}
+
+			context.document.querySelector<HTMLButtonElement>('[data-palette-reset][aria-label="Reset #FF0000"]')?.click();
+			expect(Array.from(context.document.querySelectorAll('[data-svg-container] path')).map((path) => path.getAttribute('fill')))
+				.toEqual(['#FF0000', '#222222']);
+
+			context.document.querySelector<HTMLButtonElement>('[data-palette-reset-all]')?.click();
+			expect(Array.from(context.document.querySelectorAll('[data-svg-container] path')).map((path) => path.getAttribute('fill')))
+				.toEqual(['#FF0000', '#00FF00']);
+			await new Promise((resolve) => setTimeout(resolve, 50));
+			await waitFor(async () => {
+				const saved = await readWorkspaceResult();
+				const parsed = new DOMParser().parseFromString(saved?.svg ?? '', 'image/svg+xml');
+				expect(Array.from(parsed.querySelectorAll('path')).map((path) => path.getAttribute('fill')))
+					.toEqual(['#FF0000', '#00FF00']);
+			});
+		} finally {
+			context.cleanup();
 		}
 	});
 

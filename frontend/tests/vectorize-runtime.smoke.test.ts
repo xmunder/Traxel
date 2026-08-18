@@ -7,8 +7,11 @@ import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import { initVectorizerApp } from '../src/lib/vectorizer-app';
 import { clearWorkspaceResult, readWorkspaceResult } from '../src/lib/workspace-storage';
 
-const FRONTEND_URL = 'http://127.0.0.1:4321';
-const BACKEND_URL = 'http://127.0.0.1:8000/vectorize';
+const FRONTEND_PORT = 4432;
+const BACKEND_PORT = 8022;
+const FRONTEND_URL = `http://127.0.0.1:${FRONTEND_PORT}`;
+const BACKEND_BASE_URL = `http://127.0.0.1:${BACKEND_PORT}`;
+const BACKEND_URL = `${BACKEND_BASE_URL}/vectorize`;
 const SMOKE_PNG_BASE64 =
 	'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAMElEQVR4nGP8//8/AymAhYGBgYGREVOCkQGLQf//MzCRZDwDw6iGUQ1U08BIavIGAA1ICRvdFHblAAAAAElFTkSuQmCC';
 
@@ -218,19 +221,19 @@ function bindDom(dom: JSDOM, fetchImpl: typeof fetch): void {
 beforeAll(async () => {
 	backendServer = startServer(
 		'uv',
-		['run', 'uvicorn', 'src.main:app', '--host', '127.0.0.1', '--port', '8000'],
+		['run', 'uvicorn', 'src.main:app', '--host', '127.0.0.1', '--port', String(BACKEND_PORT)],
 		{
 			cwd: '/home/msi/dev/vectorizer/backend',
 		},
 	);
-	frontendServer = startServer('pnpm', ['dev', '--host', '127.0.0.1', '--port', '4321'], {
+	frontendServer = startServer('pnpm', ['dev', '--host', '127.0.0.1', '--port', String(FRONTEND_PORT)], {
 		cwd: '/home/msi/dev/vectorizer/frontend',
 		env: {
-			PUBLIC_BACKEND_ENDPOINT: BACKEND_URL,
+			PUBLIC_BACKEND_ENDPOINT: BACKEND_BASE_URL,
 		},
 	});
 
-	await Promise.all([waitForUrl('http://127.0.0.1:8000/docs'), waitForUrl(FRONTEND_URL)]);
+	await Promise.all([waitForUrl(`${BACKEND_BASE_URL}/docs`), waitForUrl(FRONTEND_URL)]);
 }, 180_000);
 
 afterAll(() => {
@@ -255,7 +258,17 @@ describe('frontend runtime smoke', () => {
 			bindDom(uploadDom, fetch);
 			initVectorizerApp();
 
-			expect(uploadDom.window.document.body.textContent).toContain('Optimized for logos');
+			const dropzone = uploadDom.window.document.querySelector<HTMLElement>('[data-dropzone]');
+			const heroCanvas = uploadDom.window.document.querySelector<HTMLCanvasElement>('[data-hero-canvas]');
+			const heroFallback = uploadDom.window.document.querySelector<HTMLElement>('[data-hero-fallback]');
+
+			expect(dropzone?.textContent).toContain('Drag and Drop');
+			expect(dropzone?.textContent).toContain('Or select a local file');
+			expect(dropzone?.textContent).not.toContain('Supported Formats');
+			expect(dropzone?.textContent).not.toContain('Maximum file size');
+			expect(dropzone?.textContent).not.toContain('Waiting for an image to vectorize.');
+			expect(heroCanvas).not.toBeNull();
+			expect(heroFallback).not.toBeNull();
 
 			const input = uploadDom.window.document.querySelector<HTMLInputElement>('[data-image-input]');
 			const status = uploadDom.window.document.querySelector<HTMLElement>('[data-status]');

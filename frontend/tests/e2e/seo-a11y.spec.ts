@@ -23,7 +23,16 @@ test.describe('SEO — page titles and meta tags', () => {
 		await page.goto('/');
 
 		const canonical = page.locator('link[rel="canonical"]');
-		await expect(canonical).toHaveAttribute('href', /https:\/\/tracelab\.app\/?$/);
+		await expect(canonical).toHaveAttribute('href', 'https://traxel.pages.dev/');
+	});
+
+	test('robots.txt points crawlers to the production sitemap', async ({ request }) => {
+		const response = await request.get('/robots.txt');
+
+		expect(response.ok()).toBe(true);
+		expect(await response.text()).toContain(
+			'Sitemap: https://traxel.pages.dev/sitemap-index.xml',
+		);
 	});
 
 	test('workspace page has noindex, nofollow robots meta', async ({ page }) => {

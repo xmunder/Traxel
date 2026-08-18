@@ -11,7 +11,9 @@ test('flujo e2e: upload -> workspace -> comparación -> descarga', async ({ page
 	await page.goto('/');
 
 	await expect(page.getByRole('heading', { name: /convert pixels/i })).toBeVisible();
-	await expect(page.locator('[data-warning]')).toContainText(/optimized for logos/i);
+	await expect(page.getByRole('heading', { name: /drag and drop/i })).toBeVisible();
+	await expect(page.getByText(/or select a local file/i)).toBeVisible();
+	await expect(page.locator('body')).not.toContainText(/optimized for logos/i);
 
 	await page.setInputFiles('[data-image-input]', fixturePath);
 
@@ -155,4 +157,55 @@ test('evidencia runtime: si IndexedDB queda inaccesible, el fallback en memoria 
 
 	expect(vectorizeResponse.status()).toBe(200);
 	expect(probe.indexedDbDisabled).toBe(true);
+});
+
+test('edita, restaura y exporta la paleta sin re-vectorizar en un workspace angosto', async ({ page }) => {
+	let vectorizeRequests = 0;
+	page.on('request', (request) => {
+		if (request.method() === 'POST' && request.url().endsWith('/vectorize')) vectorizeRequests += 1;
+	});
+
+	await page.setViewportSize({ width: 390, height: 844 });
+	await page.goto('/');
+	await page.setInputFiles('[data-image-input]', fixturePath);
+	await expect(page).toHaveURL(/\/workspace$/);
+
+	const palette = page.getByRole('region', { name: 'Edit colors' });
+	await expect(palette).toBeVisible();
+	const hexInputs = palette.locator('[data-palette-hex]');
+	await expect(hexInputs.first()).toBeVisible();
+	const source = await hexInputs.first().getAttribute('data-source');
+	expect(source).toMatch(/^#[0-9A-F]{6}$/);
+	if (!source) throw new Error('The generated SVG did not expose an editable source color.');
+
+	await hexInputs.first().focus();
+	await hexInputs.first().fill('#123456');
+	await expect(hexInputs.first()).toHaveAttribute('aria-invalid', 'false');
+	await expect(page.locator('[data-svg-container] path[fill="#123456"]')).not.toHaveCount(0);
+	await expect(page.locator('[data-persistence-status]')).toContainText('saved');
+	expect(vectorizeRequests).toBe(1);
+
+	const downloadPromise = page.waitForEvent('download');
+	await page.locator('[data-download-link]').click();
+	const download = await downloadPromise;
+	const downloadedSvg = await download.createReadStream();
+	let downloadedText = '';
+	for await (const chunk of downloadedSvg) downloadedText += chunk.toString();
+	expect(downloadedText).toContain('#123456');
+
+	await page.reload();
+	await expect(page.locator('[data-svg-container] path[fill="#123456"]')).not.toHaveCount(0);
+	expect(vectorizeRequests).toBe(1);
+
+	await page.getByRole('button', { name: `Reset ${source}` }).click();
+	await expect(page.locator(`[data-svg-container] path[fill="${source}"]`)).not.toHaveCount(0);
+	await page.getByRole('button', { name: 'Reset all colors' }).click();
+	await expect(page.locator('[data-palette-hex]').first()).toHaveValue(source);
+
+	const viewportHasNoHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+	expect(viewportHasNoHorizontalOverflow).toBe(true);
+	await expect(page.locator('.workspace-review-panel__canvas')).toHaveCount(2);
+	for (const canvas of await page.locator('.workspace-review-panel__canvas').all()) {
+		await expect(canvas).toBeVisible();
+	}
 });

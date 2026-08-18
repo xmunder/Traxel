@@ -1,0 +1,118 @@
+<div class="mvp-upload-artwork" data-hero-artwork aria-hidden="true">
+	<svg
+		class="mvp-upload-artwork__mesh"
+		data-hero-mesh
+		viewBox="0 0 640 600"
+		fill="none"
+		preserveAspectRatio="xMidYMid meet"
+		xmlns="http://www.w3.org/2000/svg"
+	>
+		<defs>
+			<linearGradient id="traxel-polyhedron-stroke" x1="118" y1="296" x2="493" y2="296" gradientUnits="userSpaceOnUse">
+				<stop offset="0" stop-color="#38f3a0"></stop>
+				<stop offset="0.43" stop-color="#55f2d2"></stop>
+				<stop offset="0.68" stop-color="#51c9eb"></stop>
+				<stop offset="1" stop-color="#9b63ff"></stop>
+			</linearGradient>
+			<linearGradient id="traxel-polyhedron-face" x1="170" y1="110" x2="454" y2="426" gradientUnits="userSpaceOnUse">
+				<stop stop-color="#38f3a0" stop-opacity="0.065"></stop>
+				<stop offset="0.5" stop-color="#51dce2" stop-opacity="0.025"></stop>
+				<stop offset="1" stop-color="#9b63ff" stop-opacity="0.075"></stop>
+			</linearGradient>
+			<linearGradient id="traxel-orbit-stroke" x1="35" y1="295" x2="608" y2="292" gradientUnits="userSpaceOnUse">
+				<stop stop-color="#38f3a0" stop-opacity="0.18"></stop>
+				<stop offset="0.38" stop-color="#4ee9bb" stop-opacity="0.5"></stop>
+				<stop offset="0.7" stop-color="#647eea" stop-opacity="0.42"></stop>
+				<stop offset="1" stop-color="#9b63ff" stop-opacity="0.18"></stop>
+			</linearGradient>
+			<radialGradient id="traxel-polyhedron-aura" cx="0" cy="0" r="1" gradientTransform="translate(316 278) rotate(90) scale(235 275)" gradientUnits="userSpaceOnUse">
+				<stop stop-color="#42f5b0" stop-opacity="0.12"></stop>
+				<stop offset="0.55" stop-color="#556cff" stop-opacity="0.07"></stop>
+				<stop offset="1" stop-color="#050b09" stop-opacity="0"></stop>
+			</radialGradient>
+			<filter id="traxel-polyhedron-glow" x="-80%" y="-80%" width="260%" height="260%">
+			<feGaussianBlur stdDeviation="5" result="blur"></feGaussianBlur>
+				<feMerge>
+					<feMergeNode in="blur"></feMergeNode>
+					<feMergeNode in="SourceGraphic"></feMergeNode>
+				</feMerge>
+			</filter>
+			<filter id="traxel-node-glow" x="-300%" y="-300%" width="700%" height="700%">
+				<feGaussianBlur stdDeviation="4" result="blur"></feGaussianBlur>
+				<feMerge>
+					<feMergeNode in="blur"></feMergeNode>
+					<feMergeNode in="SourceGraphic"></feMergeNode>
+				</feMerge>
+			</filter>
+		</defs>
+
+		<ellipse cx="316" cy="282" rx="284" ry="116" fill="url(#traxel-polyhedron-aura)"></ellipse>
+
+		<g class="mvp-upload-artwork__orbits" stroke="url(#traxel-orbit-stroke)">
+			<ellipse cx="316" cy="296" rx="300" ry="118" opacity="0.62"></ellipse>
+			<ellipse cx="316" cy="296" rx="246" ry="86" opacity="0.48"></ellipse>
+			<ellipse cx="316" cy="296" rx="190" ry="55" opacity="0.36"></ellipse>
+		</g>
+		<g class="mvp-upload-artwork__orbit-markers" fill="#07110e" stroke="url(#traxel-polyhedron-stroke)">
+			<circle cx="56" cy="355" r="3.5"></circle>
+			<circle cx="126" cy="296" r="3.5"></circle>
+			<circle cx="506" cy="296" r="3.5"></circle>
+			<circle cx="488" cy="199" r="3.5"></circle>
+		</g>
+
+		<g class="mvp-upload-artwork__faces" fill="url(#traxel-polyhedron-face)">
+			<path d="M155 126 L310 60 L310 165 Z"></path>
+			<path d="M310 60 L465 126 L310 165 Z"></path>
+			<path d="M155 126 L310 165 L205 285 Z"></path>
+			<path d="M155 126 L205 285 L155 350 Z"></path>
+			<path d="M310 165 L465 126 L415 285 Z"></path>
+			<path d="M310 165 L415 285 L205 285 Z"></path>
+			<path d="M205 285 L415 285 L310 445 Z"></path>
+			<path d="M155 350 L205 285 L310 445 Z"></path>
+			<path d="M465 126 L465 350 L415 285 Z"></path>
+			<path d="M415 285 L465 350 L310 445 Z"></path>
+		</g>
+
+		<g class="mvp-upload-artwork__edges mvp-upload-artwork__edges--glow" stroke="url(#traxel-polyhedron-stroke)" filter="url(#traxel-polyhedron-glow)">
+			<path d="M155 126 L310 60 L465 126 L465 350 L310 445 L155 350 Z"></path>
+			<path d="M155 126 L310 165 L465 126 M310 60 L310 165 M310 165 L415 285 L465 126 M415 285 L465 350 M415 285 L310 445 M205 285 L310 165 M205 285 L415 285 M205 285 L310 445 M155 350 L205 285 M155 126 L205 285"></path>
+		</g>
+		<g class="mvp-upload-artwork__edges" stroke="url(#traxel-polyhedron-stroke)">
+			<path d="M155 126 L310 60 L465 126 L465 350 L310 445 L155 350 Z"></path>
+			<path d="M155 126 L310 165 L465 126 M310 60 L310 165 M310 165 L415 285 L465 126 M415 285 L465 350 M415 285 L310 445 M205 285 L310 165 M205 285 L415 285 M205 285 L310 445 M155 350 L205 285 M155 126 L205 285"></path>
+		</g>
+
+		<g class="mvp-upload-artwork__nodes" fill="url(#traxel-polyhedron-stroke)" filter="url(#traxel-node-glow)">
+			<circle cx="155" cy="126" r="4.3"></circle>
+			<circle cx="310" cy="60" r="4.7"></circle>
+			<circle cx="465" cy="126" r="4.7"></circle>
+			<circle cx="465" cy="350" r="4.3"></circle>
+			<circle cx="310" cy="445" r="4.7"></circle>
+			<circle cx="155" cy="350" r="4.3"></circle>
+			<circle cx="310" cy="165" r="4.7"></circle>
+			<circle cx="415" cy="285" r="4.3"></circle>
+			<circle cx="205" cy="285" r="4.3"></circle>
+		</g>
+
+		<g class="mvp-upload-artwork__satellites" stroke="url(#traxel-polyhedron-stroke)">
+			<g class="mvp-upload-artwork__satellite mvp-upload-artwork__satellite--left" transform="translate(44 340)">
+				<path d="M0 8 L12 1 L24 8 L12 15 Z M0 8 V23 L12 30 L24 23 V8 M12 15 V30"></path>
+			</g>
+			<g class="mvp-upload-artwork__satellite mvp-upload-artwork__satellite--right" transform="translate(516 364)">
+				<path d="M0 8 L12 1 L24 8 L12 15 Z M0 8 V23 L12 30 L24 23 V8 M12 15 V30"></path>
+			</g>
+			<g class="mvp-upload-artwork__satellite mvp-upload-artwork__satellite--upper" transform="translate(553 217) scale(.72)">
+				<path d="M0 8 L12 1 L24 8 L12 15 Z M0 8 V23 L12 30 L24 23 V8 M12 15 V30"></path>
+			</g>
+		</g>
+
+		<g class="mvp-upload-artwork__particles" fill="#74ffd1">
+			<circle cx="54" cy="197" r="2.5"></circle>
+			<circle cx="102" cy="117" r="2"></circle>
+			<circle cx="82" cy="270" r="2"></circle>
+			<circle cx="515" cy="111" r="1.5"></circle>
+			<circle cx="570" cy="159" r="2"></circle>
+			<circle cx="542" cy="262" r="2.5"></circle>
+		</g>
+	</svg>
+</div>

@@ -6,6 +6,7 @@ import {
 	type StoredWorkspaceResult,
 	type VectorizeSuccessResponse,
 } from './workspace-storage';
+import { createEditableSvgDocument, normalizeHexColor } from './svg-palette';
 
 type VectorizerState = 'idle' | 'uploading' | 'success' | 'error';
 
@@ -87,10 +88,6 @@ function sanitizeSvg(svgText: string): string {
 	svg.setAttribute('aria-label', 'Vectorized SVG preview');
 
 	return svg.outerHTML;
-}
-
-function deriveBackendBase(endpoint: string): string {
-	return endpoint.endsWith('/vectorize') ? endpoint.slice(0, -'/vectorize'.length) : endpoint;
 }
 
 function getErrorMessage(error: unknown): string {
@@ -181,7 +178,7 @@ function triggerSvgDownload(svg: string, filename: string): void {
 	anchor.style.display = 'none';
 	document.body.appendChild(anchor);
 	anchor.click();
-	document.body.removeChild(anchor);
+	anchor.remove();
 	URL.revokeObjectURL(url);
 	window.dispatchEvent(new CustomEvent('vectorizer:svg-download', { detail: { filename: buildDownloadFilename(filename) } }));
 }
@@ -191,8 +188,8 @@ function initUploadPage(app: HTMLElement): void {
 	const workspacePath = app.dataset.workspacePath ?? '/workspace';
 	const input = app.querySelector<HTMLInputElement>('[data-image-input]');
 	const dropzone = app.querySelector<HTMLElement>('[data-dropzone]');
-	const uploadTrigger = app.querySelector<HTMLElement>('[data-upload-trigger]');
-	const selectedFile = app.querySelector<HTMLElement>('[data-selected-file]');
+	const uploadTriggers = app.querySelectorAll<HTMLElement>('[data-upload-trigger]');
+	const selectedFileNodes = app.querySelectorAll<HTMLElement>('[data-selected-file]');
 	const status = app.querySelector<HTMLElement>('[data-status]');
 	const errorBox = app.querySelector<HTMLElement>('[data-error]');
 	const processingOverlay = app.querySelector<HTMLElement>('[data-processing-overlay]');
@@ -204,15 +201,14 @@ function initUploadPage(app: HTMLElement): void {
 	const backendStatusIndicator = app.querySelector<HTMLElement>('[data-backend-status]');
 	const backendStatusText = app.querySelector<HTMLElement>('[data-backend-status-text]');
 
-	if (!input || !dropzone || !selectedFile || !status || !errorBox) {
+	if (!input || !dropzone || selectedFileNodes.length === 0 || !status || !errorBox) {
 		return;
 	}
 
 	let state: VectorizerState = 'idle';
 	let processingMessageIndex = 0;
 	let processingMessageTimer: number | null = null;
-	let backendHealthTimer: number | null = null;
- 	const healthEndpoint = app.dataset.healthEndpoint ?? '';
+	const healthEndpoint = app.dataset.healthEndpoint ?? '';
 
 	const setBackendStatus = (isHealthy: boolean): void => {
 		if (!backendStatusIndicator || !backendStatusText) return;
@@ -285,9 +281,12 @@ function initUploadPage(app: HTMLElement): void {
 		status.textContent = nextStatus;
 		input.disabled = nextState === 'uploading';
 		dropzone.setAttribute('aria-busy', String(nextState === 'uploading'));
-		if (uploadTrigger) {
-			uploadTrigger.setAttribute('aria-disabled', String(nextState === 'uploading'));
-		}
+		uploadTriggers.forEach((trigger) => {
+			trigger.setAttribute('aria-disabled', String(nextState === 'uploading'));
+			if (trigger instanceof HTMLButtonElement) {
+				trigger.disabled = nextState === 'uploading';
+			}
+		});
 
 		if (nextState === 'uploading') {
 			startProcessingOverlay();
@@ -315,7 +314,7 @@ function initUploadPage(app: HTMLElement): void {
 		await clearWorkspaceResult();
 		const validationError = validateFile(file);
 
-		selectedFile.textContent = file.name;
+		updateText(selectedFileNodes, file.name.toUpperCase());
 		input.value = '';
 
 		if (validationError) {
@@ -350,11 +349,12 @@ function initUploadPage(app: HTMLElement): void {
 				throw new Error('Backend response does not match the expected format.');
 			}
 
-			sanitizeSvg(payload.svg);
+			const safeSvg = sanitizeSvg(payload.svg);
 			const saveOutcome: SaveWorkspaceResultOutcome = await saveWorkspaceResult({
 				filename: file.name,
 				originalFile: file,
-				svg: payload.svg,
+				svg: safeSvg,
+				originalSvg: safeSvg,
 				metadata: payload.metadata,
 				storedAt: new Date().toISOString(),
 			});
@@ -365,7 +365,7 @@ function initUploadPage(app: HTMLElement): void {
 				navigateTo(workspacePath);
 			} else {
 				setState('success', 'Vectorization complete. Downloading SVG directly (storage unavailable).');
-				triggerSvgDownload(payload.svg, file.name);
+				triggerSvgDownload(safeSvg, file.name);
 			}
 		} catch (error) {
 			await clearWorkspaceResult();
@@ -399,10 +399,12 @@ function initUploadPage(app: HTMLElement): void {
 		input.click();
 	};
 
-	uploadTrigger?.addEventListener('click', openFilePicker);
+	uploadTriggers.forEach((trigger) => {
+		trigger.addEventListener('click', openFilePicker);
+	});
 	if (healthEndpoint) {
 		void checkBackendHealth();
-		backendHealthTimer = window.setInterval(() => {
+		window.setInterval(() => {
 			void checkBackendHealth();
 		}, HEALTH_POLL_INTERVAL_MS);
 	}
@@ -451,6 +453,10 @@ async function initWorkspacePage(app: HTMLElement): Promise<void> {
 	const filename = app.querySelector<HTMLElement>('[data-workspace-filename]');
 	const logList = app.querySelector<HTMLElement>('[data-log-list]');
 	const stateFooters = app.querySelectorAll<HTMLElement>('[data-state-footer]');
+	const palettePanel = app.querySelector<HTMLElement>('[data-palette-panel]');
+	const paletteRows = app.querySelector<HTMLElement>('[data-palette-rows]');
+	const resetAllButton = app.querySelector<HTMLButtonElement>('[data-palette-reset-all]');
+	const persistenceStatus = app.querySelector<HTMLElement>('[data-persistence-status]');
 
 	if (
 		!readySection ||
@@ -479,9 +485,98 @@ async function initWorkspacePage(app: HTMLElement): Promise<void> {
 	}
 
 	const safeSvg = sanitizeSvg(result.svg);
+	const safeOriginalSvg = sanitizeSvg(result.originalSvg ?? result.svg);
+	const editableSvg = createEditableSvgDocument(safeOriginalSvg, safeSvg);
 	const originalImageUrl = URL.createObjectURL(result.originalFile);
-	const downloadUrl = URL.createObjectURL(new Blob([result.svg], { type: 'image/svg+xml;charset=utf-8' }));
+	let downloadUrl: string | null = null;
 	const bezierNodes = Math.max(result.metadata.paths_generated * 4, result.metadata.paths_generated);
+	let saveQueue = Promise.resolve();
+
+	const replaceDownloadUrl = (svg: string): void => {
+		if (downloadUrl) URL.revokeObjectURL(downloadUrl);
+		downloadUrl = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
+		downloadLink.href = downloadUrl;
+	};
+
+	const queueSave = (svg: string): void => {
+		saveQueue = saveQueue
+			.then(async () => {
+				const outcome = await saveWorkspaceResult({ ...result, originalSvg: safeOriginalSvg, svg });
+				if (persistenceStatus) {
+					persistenceStatus.textContent = outcome.persisted === 'indexeddb'
+						? 'Changes saved in this workspace.'
+						: 'Changes are available for this session only.';
+				}
+			})
+			.catch(() => {
+				if (persistenceStatus) persistenceStatus.textContent = 'Changes are available for this session only.';
+			});
+	};
+
+	const synchronizeSvg = (): void => {
+		svgContainer.innerHTML = editableSvg.currentSvg;
+		replaceDownloadUrl(editableSvg.currentSvg);
+		queueSave(editableSvg.currentSvg);
+	};
+
+	const renderPalette = (): void => {
+		if (!palettePanel || !paletteRows) return;
+		paletteRows.replaceChildren();
+		palettePanel.hidden = editableSvg.entries.length === 0;
+
+		for (const entry of editableSvg.entries) {
+			const row = document.createElement('div');
+			row.dataset.paletteRow = '';
+			row.className = 'workspace-palette__row';
+
+			const swatch = document.createElement('span');
+			swatch.className = 'workspace-palette__source';
+			swatch.style.setProperty('--source-color', entry.source);
+			swatch.textContent = entry.source;
+
+			const picker = document.createElement('input');
+			picker.type = 'color';
+			picker.value = entry.current;
+			picker.dataset.paletteColor = '';
+			picker.dataset.source = entry.source;
+			picker.setAttribute('aria-label', `Choose replacement for ${entry.source}`);
+
+			const hex = document.createElement('input');
+			hex.type = 'text';
+			hex.value = entry.current;
+			hex.inputMode = 'text';
+			hex.maxLength = 7;
+			hex.dataset.paletteHex = '';
+			hex.dataset.source = entry.source;
+			hex.setAttribute('aria-label', `Hex replacement for ${entry.source}`);
+			hex.setAttribute('aria-invalid', 'false');
+
+			const reset = document.createElement('button');
+			reset.type = 'button';
+			reset.dataset.paletteReset = '';
+			reset.textContent = 'Reset';
+			reset.setAttribute('aria-label', `Reset ${entry.source}`);
+
+			const apply = (value: string): void => {
+				const next = normalizeHexColor(value);
+				hex.setAttribute('aria-invalid', String(!next));
+				if (!next || !editableSvg.replace(entry.source, next)) return;
+				synchronizeSvg();
+				renderPalette();
+			};
+
+			picker.addEventListener('input', () => apply(picker.value));
+			hex.addEventListener('input', () => apply(hex.value));
+			reset.addEventListener('click', () => {
+				editableSvg.reset(entry.source);
+				synchronizeSvg();
+				renderPalette();
+			});
+
+			row.append(swatch, picker, hex, reset);
+			paletteRows.append(row);
+		}
+	};
 
 	readySection.hidden = false;
 	if (emptySection) {
@@ -489,7 +584,7 @@ async function initWorkspacePage(app: HTMLElement): Promise<void> {
 	}
 	originalImage.src = originalImageUrl;
 	svgContainer.innerHTML = safeSvg;
-	downloadLink.href = downloadUrl;
+	replaceDownloadUrl(editableSvg.currentSvg);
 	downloadLink.download = buildDownloadFilename(result.filename);
 	downloadLink.setAttribute('aria-disabled', 'false');
 	colorsMetadata.textContent = String(result.metadata.colors_detected);
@@ -511,12 +606,18 @@ async function initWorkspacePage(app: HTMLElement): Promise<void> {
 	if (logList) {
 		logList.innerHTML = buildWorkspaceLog(result).map((entry) => `<li>${entry}</li>`).join('');
 	}
+	renderPalette();
+	resetAllButton?.addEventListener('click', () => {
+		editableSvg.resetAll();
+		synchronizeSvg();
+		renderPalette();
+	});
 
 	app.dataset.state = 'success';
 	updateText(stateFooters, 'STATE: OPERATIONAL');
-	window.addEventListener('beforeunload', () => {
+	window.addEventListener('pagehide', () => {
 		URL.revokeObjectURL(originalImageUrl);
-		URL.revokeObjectURL(downloadUrl);
+		if (downloadUrl) URL.revokeObjectURL(downloadUrl);
 	});
 }
 

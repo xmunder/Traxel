@@ -19,7 +19,8 @@ export type HeadMetaOutput = {
 };
 
 export function buildHeadMeta(input: HeadMetaInput): HeadMetaOutput {
-	const base = input.canonicalBase.replace(/\/+$/, '');
+	let base = input.canonicalBase;
+	while (base.endsWith('/')) base = base.slice(0, -1);
 	const canonical = `${base}${input.pathname}`;
 
 	return {

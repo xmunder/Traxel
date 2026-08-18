@@ -106,6 +106,37 @@ describe('obs-auth: credential management', () => {
 		}
 	});
 
+	test('loadCredentials returns null for malformed stored credentials', async () => {
+		const { cleanup, sessionStorage } = setupDom('<html><body></body></html>');
+		try {
+			sessionStorage.setItem('obs-creds', '{invalid-json');
+			const { loadCredentials } = await import('../src/lib/obs-auth');
+			expect(loadCredentials()).toBeNull();
+		} finally {
+			cleanup();
+		}
+	});
+
+	test('initObsLogin returns when the login form is unavailable', async () => {
+		const { cleanup } = setupDom('<html><body></body></html>');
+		try {
+			const { initObsLogin } = await import('../src/lib/obs-auth');
+			expect(() => initObsLogin()).not.toThrow();
+		} finally {
+			cleanup();
+		}
+	});
+
+	test('requireAuth returns a safe placeholder while redirecting without credentials', async () => {
+		const { cleanup } = setupDom('<html><body></body></html>');
+		try {
+			const { requireAuth } = await import('../src/lib/obs-auth');
+			expect(requireAuth()).toEqual({ username: '', password: '' });
+		} finally {
+			cleanup();
+		}
+	});
+
 	test('clearCredentials removes stored credentials', async () => {
 		const { cleanup, sessionStorage } = setupDom(
 			'<html><body></body></html>',
@@ -218,7 +249,9 @@ describe('initObsLogin: login flow', () => {
 
 	test('redirects to dashboard after successful credential verification', async () => {
 		const { dom, cleanup, navigatedTo } = setupDom(LOGIN_HTML);
-		const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+		const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+			new Response('{}', { status: 200 }),
+		);
 		Object.assign(globalThis, { fetch: fetchMock });
 
 		try {
@@ -518,6 +551,29 @@ describe('obs-dashboard: fetch data and render', () => {
 
 			expect(dom.window.document.querySelector('[data-obs-total-requests]')?.textContent).toBe('42');
 			expect(dom.window.document.querySelector('[data-obs-total-errors]')?.textContent).toBe('3');
+		} finally {
+			cleanup();
+		}
+	});
+
+	test('legacy refresh toggle starts and stops automatic refresh', async () => {
+		const { dom, cleanup } = setupDom(DASHBOARD_HTML, { username: 'admin', password: 'pass' });
+		Object.assign(globalThis, {
+			fetch: buildFetch({
+				'/obs/summary': SUMMARY,
+				'/obs/requests': REQUESTS_RESPONSE,
+				'/obs/errors': ERRORS_RESPONSE,
+			}),
+		});
+		try {
+			const { initObsDashboard } = await import('../src/lib/obs-dashboard');
+			initObsDashboard();
+			const toggle = dom.window.document.querySelector<HTMLInputElement>('[data-obs-refresh-toggle]');
+			toggle!.checked = true;
+			toggle!.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+			toggle!.checked = false;
+			toggle!.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+			expect(toggle).not.toBeNull();
 		} finally {
 			cleanup();
 		}
@@ -1106,6 +1162,14 @@ describe('obs-chart: brush selection callback', () => {
 		expect(callback).toHaveBeenCalledOnce();
 		expect(callback).toHaveBeenCalledWith({ fromIndex: 1, toIndex: 3 });
 	});
+
+	test('triggerBrushSelect does nothing without a registered callback', async () => {
+		const canvas = buildCanvasMock();
+		const { initObsChart, triggerBrushSelect } = await import('../src/lib/obs-chart');
+		const chart = initObsChart(canvas);
+
+		expect(() => triggerBrushSelect(chart, 2, 1)).not.toThrow();
+	});
 });
 
 // ─── obs-chart: stacked status breakdown datasets ─────────────────
@@ -1144,7 +1208,7 @@ describe('obs-chart: stacked status breakdown', () => {
 		]);
 
 		const datasets = (chart as unknown as { data: { datasets: Array<{ data: number[]; label: string }> } }).data.datasets;
-		expect(datasets.length).toBe(4);
+		expect(datasets).toHaveLength(4);
 
 		const d200 = datasets.find(d => d.label === '200');
 		expect(d200).toBeDefined();
@@ -1163,6 +1227,21 @@ describe('obs-chart: stacked status breakdown', () => {
 		expect(d500!.data).toEqual([1, 0]);
 	});
 
+	test('updateObsChart uses fallback colors for non-standard status codes', async () => {
+		const canvas = buildCanvasMock();
+		const { initObsChart, updateObsChart } = await import('../src/lib/obs-chart');
+		const chart = initObsChart(canvas);
+
+		updateObsChart(chart, [
+			{ bucket: '2026-04-10T12:00', count: 2, status_counts: { '100': 1, abc: 1 } },
+		]);
+
+		const datasets = chart.data.datasets as Array<{ label: string; backgroundColor: string }>;
+		expect(datasets.map((dataset) => dataset.label)).toEqual(['100', 'abc']);
+		expect(datasets[0].backgroundColor).toContain('99, 102, 241');
+		expect(datasets[1].backgroundColor).toContain('99, 102, 241');
+	});
+
 	test('updateObsChart falls back to single dataset when no breakdown fields', async () => {
 		const canvas = buildCanvasMock();
 		const { initObsChart, updateObsChart } = await import('../src/lib/obs-chart');
@@ -1173,8 +1252,78 @@ describe('obs-chart: stacked status breakdown', () => {
 		]);
 
 		const datasets = (chart as unknown as { data: { datasets: Array<{ data: number[] }> } }).data.datasets;
-		expect(datasets.length).toBe(1);
+		expect(datasets).toHaveLength(1);
 		expect(datasets[0].data).toEqual([5]);
+	});
+
+	test('updateObsChart creates family datasets from aggregate counters', async () => {
+		const canvas = buildCanvasMock();
+		const { initObsChart, updateObsChart } = await import('../src/lib/obs-chart');
+		const chart = initObsChart(canvas);
+
+		updateObsChart(chart, [
+			{
+				bucket: '2026-04-10T12:00',
+				count: 10,
+				count_2xx: 6,
+				count_3xx: 1,
+				count_4xx: 2,
+				count_5xx: 1,
+			},
+		]);
+
+		const datasets = chart.data.datasets as Array<{ label: string; data: number[] }>;
+		expect(datasets.map((dataset) => dataset.label)).toEqual(['2xx', '3xx', '4xx', '5xx']);
+		expect(datasets.map((dataset) => dataset.data[0])).toEqual([6, 1, 2, 1]);
+	});
+
+	test('brush interaction emits an ordered selection and updates its overlay', async () => {
+		const listeners = new Map<string, EventListener>();
+		const canvas = {
+			getContext: vi.fn().mockReturnValue({ clearRect: vi.fn(), fillRect: vi.fn(), canvas: {} }),
+			width: 800,
+			height: 300,
+			addEventListener: vi.fn((type: string, listener: EventListener) => listeners.set(type, listener)),
+			getBoundingClientRect: vi.fn().mockReturnValue({ left: 0, width: 800 }),
+		} as unknown as HTMLCanvasElement;
+		const overlay = document.createElement('div');
+		const { bindBrushInteraction, initObsChart, setOnBrushSelect } = await import('../src/lib/obs-chart');
+		const chart = initObsChart(canvas);
+		chart.data.labels = ['one', 'two', 'three'];
+		const callback = vi.fn();
+		setOnBrushSelect(chart, callback);
+		bindBrushInteraction(chart, canvas, overlay);
+
+		listeners.get('mousedown')?.({ clientX: 600, offsetX: 600 } as unknown as MouseEvent);
+		listeners.get('mousemove')?.({ clientX: 100, offsetX: 100 } as unknown as MouseEvent);
+		listeners.get('mouseup')?.({ clientX: 100, offsetX: 100 } as unknown as MouseEvent);
+
+		expect(callback).toHaveBeenCalledWith({ fromIndex: 0, toIndex: 2 });
+		expect(overlay.hidden).toBe(true);
+	});
+
+	test('brush interaction handles short ranges and mouse leave cleanup', async () => {
+		const listeners = new Map<string, EventListener>();
+		const canvas = {
+			getContext: vi.fn().mockReturnValue({ clearRect: vi.fn(), fillRect: vi.fn(), canvas: {} }),
+			width: 800,
+			height: 300,
+			addEventListener: vi.fn((type: string, listener: EventListener) => listeners.set(type, listener)),
+			getBoundingClientRect: vi.fn().mockReturnValue({ left: 0, width: 800 }),
+		} as unknown as HTMLCanvasElement;
+		const { bindBrushInteraction, initObsChart } = await import('../src/lib/obs-chart');
+		const chart = initObsChart(canvas);
+		chart.data.labels = ['one', 'two'];
+		bindBrushInteraction(chart, canvas);
+
+		listeners.get('mousedown')?.({ clientX: 100, offsetX: 100 } as unknown as MouseEvent);
+		chart.data.labels = ['one'];
+		listeners.get('mouseup')?.({ clientX: 200, offsetX: 200 } as unknown as MouseEvent);
+		chart.data.labels = ['one', 'two'];
+		listeners.get('mousedown')?.({ clientX: 100, offsetX: 100 } as unknown as MouseEvent);
+		listeners.get('mouseleave')?.({} as unknown as MouseEvent);
+
+		expect(chart.data.labels).toHaveLength(2);
 	});
 });
 

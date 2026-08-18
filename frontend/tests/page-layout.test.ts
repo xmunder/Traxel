@@ -5,9 +5,14 @@ import { describe, expect, test } from 'vitest';
 
 const PAGES_DIR = resolve(__dirname, '../src/pages');
 const LAYOUTS_DIR = resolve(__dirname, '../src/layouts');
+const COMPONENTS_DIR = resolve(__dirname, '../src/components');
 
 function readPage(filename: string): string {
 	return readFileSync(resolve(PAGES_DIR, filename), 'utf-8');
+}
+
+function readComponent(filename: string): string {
+	return readFileSync(resolve(COMPONENTS_DIR, filename), 'utf-8');
 }
 
 describe('index.astro — BaseLayout integration and SEO', () => {
@@ -51,6 +56,34 @@ describe('index.astro — BaseLayout integration and SEO', () => {
 		expect(page).toContain('data-processing-overlay');
 		// data-upload-form lives inside UploadZone.astro component, not the page itself
 		expect(page).toContain('data-state="idle"');
+	});
+
+	test('keeps the decorative hero artwork separate and renders exactly three capability groups', () => {
+		const page = readPage('index.astro');
+		const upload = readComponent('UploadZone.astro');
+		const hero = readComponent('HeroArtwork.astro');
+		expect(page).toContain("import HeroArtwork from '../components/HeroArtwork.astro'");
+		expect(page).toContain('<HeroArtwork />');
+		const titles = [...page.matchAll(/title:\s*'([^']+)'/g)].map((match) => match[1]);
+		expect(titles).toEqual([
+			'Smart Tracing',
+			'Multi-Layer SVGs',
+			'Color Palette Extraction',
+		]);
+		expect(titles).toHaveLength(3);
+		expect(page).toContain('<div class="mvp-upload-capabilities">');
+		expect(page).not.toContain('class="mvp-upload-warning"');
+		expect(page).not.toContain('class="mvp-upload-formats"');
+		expect(page).toContain("from '@lucide/astro'");
+		expect(upload).toContain("from '@lucide/astro'");
+		expect(hero).toContain('data-hero-artwork');
+		expect(hero).toContain('data-hero-mesh');
+		expect(hero).toContain('mvp-upload-artwork__edges');
+		expect(hero).toContain('mvp-upload-artwork__orbits');
+		expect(hero).toContain('mvp-upload-artwork__satellites');
+		expect(upload).not.toContain('data-warning');
+		expect(upload).not.toContain('Supported Formats');
+		expect(upload).not.toContain('Optimized for logos');
 	});
 });
 
@@ -138,12 +171,6 @@ describe('observability/dashboard.astro — BaseLayout integration and noindex',
 });
 
 describe('selector regression — all data-* attributes required by JS runtime', () => {
-	const COMPONENTS_DIR = resolve(__dirname, '../src/components');
-
-	function readComponent(name: string): string {
-		return readFileSync(resolve(COMPONENTS_DIR, name), 'utf-8');
-	}
-
 	test('index.astro + UploadZone.astro expose all selectors needed by vectorizer-app.ts (upload page)', () => {
 		const page = readPage('index.astro');
 		const upload = readComponent('UploadZone.astro');

@@ -13,6 +13,7 @@ export type StoredWorkspaceResult = VectorizeSuccessResponse & {
 	filename: string;
 	originalFile: Blob;
 	storedAt: string;
+	originalSvg?: string;
 };
 
 export class WorkspaceStorageError extends Error {
@@ -37,9 +38,7 @@ type MemoryStoreHost = typeof globalThis & {
 
 function getMemoryStore(): Map<string, StoredWorkspaceResult> {
 	const host = globalThis as MemoryStoreHost;
-	if (!host[MEMORY_STORE_KEY]) {
-		host[MEMORY_STORE_KEY] = new Map<string, StoredWorkspaceResult>();
-	}
+	host[MEMORY_STORE_KEY] ??= new Map<string, StoredWorkspaceResult>();
 
 	return host[MEMORY_STORE_KEY];
 }
@@ -49,6 +48,10 @@ function cloneForMemoryStore(result: StoredWorkspaceResult): StoredWorkspaceResu
 		...result,
 		originalFile: result.originalFile.slice(0, result.originalFile.size, result.originalFile.type),
 	};
+}
+
+function withResetBaseline(result: StoredWorkspaceResult): StoredWorkspaceResult & { originalSvg: string } {
+	return { ...result, originalSvg: result.originalSvg ?? result.svg };
 }
 
 function canUseIndexedDb(): boolean {
@@ -128,14 +131,15 @@ export async function clearWorkspaceResult(): Promise<void> {
 
 export async function readWorkspaceResult(): Promise<StoredWorkspaceResult | null> {
 	if (!canUseIndexedDb()) {
-		return getMemoryStore().get(STORAGE_KEY) ?? null;
+		const result = getMemoryStore().get(STORAGE_KEY);
+		return result ? withResetBaseline(result) : null;
 	}
 
 	try {
 		const result = await withObjectStore<StoredWorkspaceResult | undefined>('readonly', (store) =>
 			store.get(STORAGE_KEY),
 		);
-		return result ?? null;
+		return result ? withResetBaseline(result) : null;
 	} catch {
 		return null;
 	}

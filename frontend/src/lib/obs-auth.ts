@@ -26,7 +26,8 @@ export type ObsCredentials = {
 
 /** Encode credentials as a Basic auth header value. */
 export function encodeBasic(username: string, password: string): string {
-	return `Basic ${btoa(`${username}:${password}`)}`;
+	const credentials = `${username}:${password}`;
+	return `Basic ${btoa(credentials)}`;
 }
 
 /** Persist credentials to sessionStorage. */

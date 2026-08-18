@@ -76,9 +76,9 @@
 }
 
 .obs-login-error {
-	background: rgba(255, 80, 80, 0.1);
+	background: #3b1111;
 	border: 1px solid rgba(255, 80, 80, 0.4);
-	color: #ff8080;
+	color: #ffb4ab;
 	padding: 10px 14px;
 	font-size: 0.875rem;
 	margin-bottom: 20px;
@@ -217,9 +217,9 @@
 
 /* Error banner */
 .obs-error-banner {
-	background: rgba(255, 80, 80, 0.1);
+	background: #3b1111;
 	border-bottom: 1px solid rgba(255, 80, 80, 0.4);
-	color: #ff8080;
+	color: #ffb4ab;
 	padding: 12px 24px;
 	font-size: 0.875rem;
 }
@@ -319,7 +319,7 @@
 	border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 	color: #ccc;
 	vertical-align: top;
-	word-break: break-word;
+	overflow-wrap: anywhere;
 }
 
 .obs-table tr:last-child td {
@@ -341,11 +341,11 @@
 	text-transform: uppercase;
 }
 
-.obs-method--get    { background: rgba(0, 160, 80, 0.25); color: #6effa1; }
-.obs-method--post   { background: rgba(0, 100, 220, 0.25); color: #7ab8ff; }
-.obs-method--put    { background: rgba(200, 140, 0, 0.25); color: #ffd966; }
-.obs-method--patch  { background: rgba(160, 80, 200, 0.25); color: #d4aaff; }
-.obs-method--delete { background: rgba(200, 60, 60, 0.25); color: #ff9090; }
+.obs-method--get    { background: #0d3b24; color: #a6ffc2; }
+.obs-method--post   { background: #102f5c; color: #b0d2ff; }
+.obs-method--put    { background: #4a3500; color: #ffe7a3; }
+.obs-method--patch  { background: #3b2054; color: #e2c7ff; }
+.obs-method--delete { background: #4a1f1a; color: #ffb5ad; }
 
 /* Status badge */
 .obs-status {
@@ -356,11 +356,11 @@
 	border-radius: 2px;
 }
 
-.obs-status--2xx { background: rgba(0, 160, 80, 0.25); color: #6effa1; }
-.obs-status--3xx { background: rgba(0, 100, 220, 0.25); color: #7ab8ff; }
-.obs-status--4xx { background: rgba(200, 140, 0, 0.25); color: #ffd966; }
-.obs-status--5xx { background: rgba(200, 60, 60, 0.25); color: #ff9090; }
-.obs-status--other { background: rgba(120, 120, 120, 0.25); color: #bbb; }
+.obs-status--2xx { background: #0d3b24; color: #a6ffc2; }
+.obs-status--3xx { background: #102f5c; color: #b0d2ff; }
+.obs-status--4xx { background: #4a3500; color: #ffe7a3; }
+.obs-status--5xx { background: #4a1f1a; color: #ffb5ad; }
+.obs-status--other { background: #3a3a3a; color: #e0e0e0; }
 
 /* Error detail cell */
 .obs-error-detail {

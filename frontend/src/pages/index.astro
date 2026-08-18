@@ -1,4 +1,6 @@
 ---
+import { BrainCircuit, Layers2, Palette } from '@lucide/astro';
+import HeroArtwork from '../components/HeroArtwork.astro';
 import UploadZone from '../components/UploadZone.astro';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import '../styles/vectorizer.css';
@@ -8,28 +10,32 @@ const vectorizeEndpoint = `${backendEndpoint}/vectorize`;
 
 const capabilities = [
 	{
-		icon: 'auto_fix_high',
+		key: 'smart-tracing',
+		Icon: BrainCircuit,
 		title: 'Smart Tracing',
-		copy: 'Automatic edge detection with sub-pixel precision.',
+		copy: 'AI-powered edge detection with sub-pixel precision, capturing even the finest details.',
 	},
 	{
-		icon: 'palette',
-		title: 'Color Palette Extraction',
-		copy: 'Auto-generate vector layers based on visual depth.',
-	},
-	{
-		icon: 'layers',
+		key: 'multi-layer-svgs',
+		Icon: Layers2,
 		title: 'Multi-Layer SVGs',
-		copy: 'Perfectly organized groups for easy editing.',
+		copy: 'Automatically generates perfectly organized vector layers and groups for easy editing.',
+	},
+	{
+		key: 'color-palette-extraction',
+		Icon: Palette,
+		title: 'Color Palette Extraction',
+		copy: 'Derive accurate vector color palettes from your image based on depth and visual weight.',
 	},
 ];
 ---
 
 <BaseLayout
-	title="Traxel | System Active"
-	description="Convert raster images to clean, editable SVG files. Optimized for logos, icons, and flat artwork."
+	title="TRAXEL — Convert Pixels into Precision Paths"
+	description="Transform your raster images into clean, scalable SVG files with cutting-edge AI technology. Optimized for logos, icons, and complex illustrations."
 	pathname="/"
 	bodyClass="mvp-upload-body"
+	fonts="traxel"
 >
 	<div
 		class="mvp-upload-page"
@@ -55,65 +61,106 @@ const capabilities = [
 			</div>
 		</div>
 
+		<div class="mvp-upload-background" aria-hidden="true">
+			<div class="mvp-upload-background__base"></div>
+
+			<svg class="mvp-upload-background__streak mvp-upload-background__streak--top" viewBox="0 0 600 600" fill="none">
+				<defs>
+					<linearGradient id="astro-streak-top" x1="0" y1="0" x2="1" y2="1">
+						<stop offset="0%" stop-color="#4ade80" stop-opacity="0"></stop>
+						<stop offset="45%" stop-color="#4ade80" stop-opacity="0.8"></stop>
+						<stop offset="70%" stop-color="#a78bfa" stop-opacity="0.6"></stop>
+						<stop offset="100%" stop-color="#a78bfa" stop-opacity="0"></stop>
+					</linearGradient>
+					<filter id="astro-blur-top">
+						<feGaussianBlur stdDeviation="14"></feGaussianBlur>
+					</filter>
+				</defs>
+				<path d="M80 520 C 220 380, 260 300, 340 220 C 420 140, 480 100, 580 40" stroke="url(#astro-streak-top)" stroke-width="60" stroke-linecap="round" filter="url(#astro-blur-top)"></path>
+				<path d="M140 560 C 260 430, 320 340, 400 250 C 470 175, 530 130, 610 80" stroke="url(#astro-streak-top)" stroke-width="22" stroke-linecap="round" filter="url(#astro-blur-top)" opacity="0.8"></path>
+			</svg>
+
+			<svg class="mvp-upload-background__streak mvp-upload-background__streak--bottom-left" viewBox="0 0 600 600" fill="none">
+				<defs>
+					<linearGradient id="astro-streak-bottom-left" x1="1" y1="0" x2="0" y2="1">
+						<stop offset="0%" stop-color="#a78bfa" stop-opacity="0"></stop>
+						<stop offset="40%" stop-color="#a78bfa" stop-opacity="0.7"></stop>
+						<stop offset="70%" stop-color="#4ade80" stop-opacity="0.7"></stop>
+						<stop offset="100%" stop-color="#4ade80" stop-opacity="0"></stop>
+					</linearGradient>
+					<filter id="astro-blur-bottom-left">
+						<feGaussianBlur stdDeviation="14"></feGaussianBlur>
+					</filter>
+				</defs>
+				<path d="M520 80 C 380 220, 300 260, 220 340 C 140 420, 100 480, 40 580" stroke="url(#astro-streak-bottom-left)" stroke-width="60" stroke-linecap="round" filter="url(#astro-blur-bottom-left)"></path>
+				<path d="M560 140 C 430 260, 340 320, 250 400 C 175 470, 130 530, 80 610" stroke="url(#astro-streak-bottom-left)" stroke-width="22" stroke-linecap="round" filter="url(#astro-blur-bottom-left)" opacity="0.8"></path>
+			</svg>
+
+			<svg class="mvp-upload-background__streak mvp-upload-background__streak--bottom-right" viewBox="0 0 800 300" fill="none" preserveAspectRatio="none">
+				<defs>
+					<linearGradient id="astro-streak-bottom-right" x1="0" y1="0" x2="1" y2="0">
+						<stop offset="0%" stop-color="#4ade80" stop-opacity="0"></stop>
+						<stop offset="55%" stop-color="#4ade80" stop-opacity="0.75"></stop>
+						<stop offset="100%" stop-color="#4ade80" stop-opacity="0"></stop>
+					</linearGradient>
+					<filter id="astro-blur-bottom-right">
+						<feGaussianBlur stdDeviation="16"></feGaussianBlur>
+					</filter>
+				</defs>
+				<path d="M0 230 C 200 180, 420 260, 800 190" stroke="url(#astro-streak-bottom-right)" stroke-width="40" stroke-linecap="round" filter="url(#astro-blur-bottom-right)"></path>
+			</svg>
+
+			<div class="mvp-upload-background__ambient mvp-upload-background__ambient--violet"></div>
+			<div class="mvp-upload-background__ambient mvp-upload-background__ambient--green"></div>
+		</div>
+
 		<header class="mvp-upload-header">
-			<div class="mvp-upload-header__brand">
-				<img class="app-brand-mark" src="/screen.png" alt="Traxel logo" width="28" height="28" />
-				<span>Traxel</span>
-			</div>
-			<div class="mvp-upload-header__actions">
-			</div>
+			<a class="mvp-upload-header__brand" href="/" aria-label="Traxel home">
+				<svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+					<path d="M18 3L31 10.5V25.5L18 33L5 25.5V10.5L18 3Z" stroke="#4ade80" stroke-width="2" stroke-linejoin="round"></path>
+					<path d="M18 3V18M18 18L31 10.5M18 18L5 10.5M18 18V33" stroke="#4ade80" stroke-width="1.5" stroke-linejoin="round" opacity="0.7"></path>
+					<path d="M11.5 14.25L24.5 21.75M24.5 14.25L11.5 21.75" stroke="#86efac" stroke-width="1.2" opacity="0.5"></path>
+				</svg>
+				<span>TRAXEL</span>
+			</a>
 		</header>
 
 		<main class="mvp-upload-main" id="main-content">
-			<div class="mvp-upload-main__glow mvp-upload-main__glow--left" aria-hidden="true"></div>
-			<div class="mvp-upload-main__glow mvp-upload-main__glow--right" aria-hidden="true"></div>
-
 			<div class="mvp-upload-shell">
 				<section class="mvp-upload-hero">
-					<h1>
-						Convert Pixels <br />
-						<span>into Precision Paths</span>
+					<h1 class="chrome-text">
+						Convert Pixels into Precision Paths
 					</h1>
 					<p>
-						Convert raster images to clean, editable SVG files. Optimized for logos, icons, and flat artwork.
+						Transform your raster images into clean, scalable SVG files with cutting-edge AI technology. Optimized for logos, icons, and complex illustrations.
 					</p>
 				</section>
 
-				<section class="mvp-upload-layout" aria-label="Upload and capability overview">
-					<div class="mvp-upload-layout__left">
+				<section class="mvp-upload-stage" aria-label="Upload and capability overview">
+					<div class="mvp-upload-stage__art" aria-hidden="true">
+						<HeroArtwork />
+					</div>
+
+					<div class="mvp-upload-stage__upload">
 						<UploadZone />
 					</div>
 
-					<aside class="mvp-upload-layout__right">
-						<div class="mvp-upload-warning" data-warning aria-live="polite">
-							<span class="material-symbols-outlined">warning</span>
-							<p>Optimized for logos &amp; icons. Complex images or photos may need manual cleanup.</p>
-						</div>
-
-						<div class="mvp-upload-formats">
-							<span>Supported Formats</span>
-							<div class="mvp-upload-formats__chips">
-								<span>PNG</span>
-								<span>JPG</span>
-								<span>WEBP</span>
-							</div>
-						</div>
-
+					<aside class="mvp-upload-stage__side">
 						<div class="mvp-upload-capabilities">
-							{capabilities.map((item) => (
-								<article class="mvp-upload-capability">
+							{capabilities.map(({ key, Icon, title, copy }) => (
+								<article class={`mvp-upload-capability mvp-upload-capability--${key}`}>
 									<div class="mvp-upload-capability__icon">
-										<span class="material-symbols-outlined">{item.icon}</span>
+										<Icon aria-hidden="true" focusable="false" stroke-width={1.8} />
 									</div>
-									<div>
-										<h3>{item.title}</h3>
-										<p>{item.copy}</p>
+									<div class="mvp-upload-capability__copy">
+										<h3>{title}</h3>
+										<p>{copy}</p>
 									</div>
 								</article>
 							))}
 						</div>
 
-				</aside>
+					</aside>
 				</section>
 			</div>
 		</main>

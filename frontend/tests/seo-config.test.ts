@@ -12,7 +12,7 @@ function readFile(relativePath: string): string {
 describe('astro.config.mjs — site and sitemap', () => {
 	test('defines site property with production URL', () => {
 		const config = readFile('astro.config.mjs');
-		expect(config).toMatch(/site:\s*['"]https:\/\/tracelab\.app['"]/);
+		expect(config).toMatch(/site:\s*['"]https:\/\/traxel\.pages\.dev\/['"]/);
 	});
 
 	test('imports and uses @astrojs/sitemap integration', () => {
@@ -53,7 +53,7 @@ describe('public/robots.txt — crawler directives', () => {
 
 	test('references the sitemap URL', () => {
 		const robots = readFile('public/robots.txt');
-		expect(robots).toMatch(/Sitemap:\s*https:\/\/tracelab\.app\/sitemap-index\.xml/i);
+		expect(robots).toMatch(/Sitemap:\s*https:\/\/traxel\.pages\.dev\/sitemap-index\.xml/i);
 	});
 
 	test('does NOT disallow root or workspace (only meta tags handle those)', () => {
