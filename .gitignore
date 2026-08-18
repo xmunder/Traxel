@@ -27,3 +27,5 @@ skills-lock.json
 assets_test/*
 simulate-traffic.sh
 *.properties
+**/coverage.xml
+**/coverage/
