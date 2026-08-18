@@ -9,7 +9,7 @@ from src.models.schemas import HealthResponse
 router = APIRouter()
 
 
-@router.get("/health", response_model=HealthResponse, tags=["operations"])
+@router.get("/health", tags=["operations"])
 async def get_health() -> HealthResponse:
     settings = get_settings()
     return HealthResponse(

@@ -18,17 +18,20 @@ import aiosqlite
 # Maps range_preset → (strftime_modifier, display_bucket_width)
 # ---------------------------------------------------------------------------
 
-# strftime format string used per bucket
+# strftime format strings used per bucket
+_MINUTE_BUCKET_FORMAT = "%Y-%m-%dT%H:%M"
+_HOUR_BUCKET_FORMAT = "%Y-%m-%dT%H:00"
+
 _STRFTIME: dict[str, str] = {
-    "1m": "%Y-%m-%dT%H:%M",  # 15s buckets → group by minute for small sets
-    "5m": "%Y-%m-%dT%H:%M",
-    "10m": "%Y-%m-%dT%H:%M",
-    "30m": "%Y-%m-%dT%H:%M",
-    "1h": "%Y-%m-%dT%H:%M",
-    "3h": "%Y-%m-%dT%H:00",
-    "6h": "%Y-%m-%dT%H:00",
-    "12h": "%Y-%m-%dT%H:00",
-    "1d": "%Y-%m-%dT%H:00",
+    "1m": _MINUTE_BUCKET_FORMAT,  # 15s buckets → group by minute for small sets
+    "5m": _MINUTE_BUCKET_FORMAT,
+    "10m": _MINUTE_BUCKET_FORMAT,
+    "30m": _MINUTE_BUCKET_FORMAT,
+    "1h": _MINUTE_BUCKET_FORMAT,
+    "3h": _HOUR_BUCKET_FORMAT,
+    "6h": _HOUR_BUCKET_FORMAT,
+    "12h": _HOUR_BUCKET_FORMAT,
+    "1d": _HOUR_BUCKET_FORMAT,
     "30d": "%Y-%m-%d",
     "365d": "%Y-%m",
 }
@@ -82,6 +85,31 @@ def _build_status_clause(status_filter: str) -> tuple[str, list[Any]]:
         return ("", [])
     lo, hi = _STATUS_RANGE[status_filter]
     return ("AND status_code >= ? AND status_code < ?", [lo, hi])
+
+
+def _build_request_filters(
+    range_preset: str | None,
+    status_filter: str,
+    now: str | None,
+) -> tuple[str, list[Any]]:
+    where_parts = ["1=1"]
+    params: list[Any] = []
+
+    if range_preset and range_preset != "all":
+        delta = _RANGE_DELTA.get(range_preset)
+        if delta:
+            now_dt = (
+                datetime.fromisoformat(now) if now else datetime.now(tz=timezone.utc)
+            )
+            where_parts.append("timestamp >= ?")
+            params.append((now_dt - delta).isoformat())
+
+    status_clause, status_params = _build_status_clause(status_filter)
+    if status_clause:
+        where_parts.append(status_clause.lstrip("AND ").strip())
+        params.extend(status_params)
+
+    return " AND ".join(where_parts), params
 
 
 def _now_utc() -> str:
@@ -180,6 +208,7 @@ class ObsStore:
         duration_ms: int,
     ) -> None:
         """Add a request record to the write queue (non-blocking)."""
+        await asyncio.sleep(0)
         try:
             self._queue.put_nowait(
                 {
@@ -230,29 +259,7 @@ class ObsStore:
         now: str | None = None,
     ) -> dict[str, Any]:
         """Return aggregate summary optionally filtered by range and status."""
-        where_parts = ["1=1"]
-        params: list[Any] = []
-
-        # Range filter
-        if range_preset and range_preset != "all":
-            delta = _RANGE_DELTA.get(range_preset)
-            if delta:
-                now_dt = (
-                    datetime.fromisoformat(now)
-                    if now
-                    else datetime.now(tz=timezone.utc)
-                )
-                since = (now_dt - delta).isoformat()
-                where_parts.append("timestamp >= ?")
-                params.append(since)
-
-        # Status filter
-        status_clause, status_params = _build_status_clause(status_filter)
-        if status_clause:
-            where_parts.append(status_clause.lstrip("AND ").strip())
-            params.extend(status_params)
-
-        where = " AND ".join(where_parts)
+        where, params = _build_request_filters(range_preset, status_filter, now)
 
         async with self._connect() as conn:
             # total
@@ -284,27 +291,7 @@ class ObsStore:
         now: str | None = None,
     ) -> list[dict[str, Any]]:
         """Return paginated list of requests ordered newest-first."""
-        where_parts = ["1=1"]
-        params: list[Any] = []
-
-        if range_preset:
-            delta = _RANGE_DELTA.get(range_preset)
-            if delta:
-                now_dt = (
-                    datetime.fromisoformat(now)
-                    if now
-                    else datetime.now(tz=timezone.utc)
-                )
-                since = (now_dt - delta).isoformat()
-                where_parts.append("timestamp >= ?")
-                params.append(since)
-
-        status_clause, status_params = _build_status_clause(status_filter)
-        if status_clause:
-            where_parts.append(status_clause.lstrip("AND ").strip())
-            params.extend(status_params)
-
-        where = " AND ".join(where_parts)
+        where, params = _build_request_filters(range_preset, status_filter, now)
 
         async with self._connect() as conn:
             async with conn.execute(

@@ -50,12 +50,14 @@ def make_store(**kwargs):
     return store
 
 
+_TEST_BASE = datetime.now(tz=timezone.utc).replace(microsecond=0)
+
+
 def _ts(offset_s: float = 0.0) -> str:
     """Return ISO-8601 UTC timestamp, optionally offset by `offset_s` seconds."""
     from datetime import timedelta
 
-    base = datetime(2026, 4, 10, 12, 0, 0, tzinfo=timezone.utc)
-    return (base + timedelta(seconds=offset_s)).isoformat()
+    return (_TEST_BASE + timedelta(seconds=offset_s)).isoformat()
 
 
 # ------------------------------------------------------------------ #
@@ -576,8 +578,13 @@ class TestQueryTimeseries:
 
     def test_invalid_range_raises(self) -> None:
         store = make_store()
+
+        async def query_invalid_range():
+            return await store.query_timeseries(range_preset="99y")
+
+        invalid_query = query_invalid_range()
         with pytest.raises(ValueError, match="Invalid range_preset"):
-            run(store.query_timeseries(range_preset="99y"))
+            run(invalid_query)
 
     def test_buckets_include_status_breakdown(self) -> None:
         """Each bucket must include count_2xx, count_3xx, count_4xx, count_5xx."""

@@ -21,7 +21,7 @@ _PATH_WHITELIST: frozenset[str] = frozenset(
 _PATH_LABEL_OTHER = "other"
 
 
-def _normalize_path(path: str, path_label_limit: int) -> str:
+def _normalize_path(path: str) -> str:
     """Return a stable label for *path*, respecting the whitelist."""
     if path in _PATH_WHITELIST:
         return path
@@ -131,7 +131,7 @@ class MetricsCollector:
         duration_ms: int,
     ) -> None:
         timestamp = datetime.now(tz=timezone.utc).isoformat()
-        label = _normalize_path(path, self._path_label_limit)
+        label = _normalize_path(path)
 
         record = RequestRecord(
             timestamp=timestamp,

@@ -37,7 +37,6 @@ def build_vectorize_response(
 
 @router.post(
     "/vectorize",
-    response_model=VectorizeResponse,
     responses={
         400: {"model": ErrorResponse},
         413: {"model": ErrorResponse},

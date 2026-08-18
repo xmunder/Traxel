@@ -19,6 +19,10 @@ def build_upload_file(filename: str, content: bytes, content_type: str) -> Uploa
     )
 
 
+def run_validation(upload: UploadFile | None):
+    return asyncio.run(validate_uploaded_image(upload))
+
+
 @pytest.mark.parametrize(
     ("filename", "content_type", "image_format"),
     [
@@ -38,7 +42,7 @@ def test_validate_uploaded_image_accepts_supported_decodable_images(
         filename, image_bytes_factory(image_format), content_type
     )
 
-    validated_image = asyncio.run(validate_uploaded_image(upload))
+    validated_image = run_validation(upload)
 
     assert validated_image.filename == filename
     assert validated_image.media_type == content_type
@@ -49,7 +53,7 @@ def test_validate_uploaded_image_accepts_supported_decodable_images(
 
 def test_validate_uploaded_image_rejects_missing_image() -> None:
     with pytest.raises(ImageValidationError) as exc_info:
-        asyncio.run(validate_uploaded_image(None))
+        run_validation(None)
 
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail == "The 'image' field is required."
@@ -61,7 +65,7 @@ def test_validate_uploaded_image_rejects_unsupported_extension(
     upload = build_upload_file("logo.gif", image_bytes_factory("PNG"), "image/gif")
 
     with pytest.raises(ImageValidationError) as exc_info:
-        asyncio.run(validate_uploaded_image(upload))
+        run_validation(upload)
 
     assert exc_info.value.status_code == 400
     assert "Supported formats" in exc_info.value.detail
@@ -71,7 +75,7 @@ def test_validate_uploaded_image_rejects_empty_file() -> None:
     upload = build_upload_file("empty.png", b"", "image/png")
 
     with pytest.raises(ImageValidationError) as exc_info:
-        asyncio.run(validate_uploaded_image(upload))
+        run_validation(upload)
 
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail == "The uploaded image is empty."
@@ -81,7 +85,7 @@ def test_validate_uploaded_image_rejects_corrupted_image() -> None:
     upload = build_upload_file("broken.png", b"not-a-real-image", "image/png")
 
     with pytest.raises(ImageValidationError) as exc_info:
-        asyncio.run(validate_uploaded_image(upload))
+        run_validation(upload)
 
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail == "The uploaded file is not a decodable image."
@@ -105,7 +109,7 @@ def test_validate_uploaded_image_rejects_file_larger_than_size_limit(
     upload = build_upload_file("too-large.png", oversized_png_bytes, "image/png")
 
     with pytest.raises(ImageValidationError) as exc_info:
-        asyncio.run(validate_uploaded_image(upload))
+        run_validation(upload)
 
     assert exc_info.value.status_code == 413
     assert exc_info.value.detail == "The uploaded image exceeds the 5 MB limit."

@@ -13,6 +13,7 @@ from src.models.schemas import (
     ObsRequestsResponse,
     ObsSummaryResponse,
     ObsTimeseriesResponse,
+    ErrorResponse,
     status_message,
 )
 from src.utils.metrics_collector import MetricsCollector
@@ -74,7 +75,7 @@ def _require_auth(
 
 @router.get(
     "/summary",
-    response_model=ObsSummaryResponse,
+    responses={503: {"model": ErrorResponse}},
     summary="Metrics summary",
 )
 async def get_summary(
@@ -110,7 +111,7 @@ async def get_summary(
 
 @router.get(
     "/requests",
-    response_model=ObsRequestsResponse,
+    responses={503: {"model": ErrorResponse}},
     summary="Recent requests",
 )
 async def get_requests(
@@ -154,7 +155,7 @@ async def get_requests(
 
 @router.get(
     "/errors",
-    response_model=ObsErrorsResponse,
+    responses={503: {"model": ErrorResponse}},
     summary="Recent errors",
 )
 async def get_errors(
@@ -174,7 +175,10 @@ async def get_errors(
 
 @router.get(
     "/timeseries",
-    response_model=ObsTimeseriesResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        503: {"model": ErrorResponse},
+    },
     summary="Bucketed request time-series",
 )
 async def get_timeseries(

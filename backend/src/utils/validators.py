@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 
-from PIL import Image, UnidentifiedImageError
+from PIL import Image
 from starlette.datastructures import UploadFile
 
 from src.config import get_settings
@@ -37,7 +37,7 @@ def _read_image_metadata(content: bytes) -> tuple[int, int, str]:
             image.load()
             width, height = image.size
             image_format = image.format or "UNKNOWN"
-    except (UnidentifiedImageError, OSError) as exc:
+    except OSError as exc:
         raise ImageValidationError(
             status_code=400,
             detail="The uploaded file is not a decodable image.",
