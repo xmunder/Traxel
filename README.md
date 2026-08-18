@@ -120,6 +120,19 @@ Rebuild images:
 docker compose build --no-cache
 ```
 
+## Regenerate README assets
+
+The product screenshots are generated from the Playwright flow in
+`frontend/tests/e2e/readme-artifacts.spec.ts`. From the `frontend` directory,
+run:
+
+```bash
+pnpm exec playwright test tests/e2e/readme-artifacts.spec.ts
+```
+
+This refreshes the images in `docs/images/`. The demo GIF is assembled from
+the generated frames in `/tmp/opencode/traxel-readme-frames`.
+
 ## Current tradeoffs
 
 - The frontend runs in `astro dev` mode to keep the MVP simple and fast to iterate on.
