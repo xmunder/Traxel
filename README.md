@@ -104,6 +104,10 @@ The observability session store is intentionally process-local. Keep the backend
 at one worker unless a shared session backend is introduced for multi-worker or
 multi-replica deployments.
 
+Compose loads observability credentials from either `.env` at the repository root
+or `backend/.env`. Set `OBS_USERNAME` and `OBS_SECRET` in one of those files, then
+recreate the services with `docker compose up -d --build`.
+
 ## Basic Docker commands
 
 See resolved config:
