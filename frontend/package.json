@@ -10,14 +10,15 @@
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
-    "test:smoke": "playwright test tests/e2e/vectorizer-workflow.spec.ts",
+    "test:smoke": "TRAXEL_E2E_TOPOLOGY=smoke playwright test tests/e2e/vectorizer-workflow.spec.ts",
     "test:e2e": "playwright test"
   },
   "dependencies": {
     "@astrojs/sitemap": "^3.7.2",
     "@lucide/astro": "^1.28.0",
     "astro": "^6.1.2",
-    "chart.js": "^4.5.1"
+    "chart.js": "^4.5.1",
+    "dompurify": "^3.4.14"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.8",

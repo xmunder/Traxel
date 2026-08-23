@@ -8,6 +8,7 @@ from time import perf_counter
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from src.config import get_settings
 from src.routes.health import router as health_router
@@ -22,6 +23,7 @@ from src.utils.observability import (
     build_request_id,
     reset_request_id,
 )
+from src.utils.rate_limit import RateLimiter
 
 
 logger = logging.getLogger("vectorizer")
@@ -130,6 +132,10 @@ async def observability_middleware(request: Request, call_next):
     duration_ms = round((perf_counter() - started_at) * 1000, 3)
     response.headers[settings.request_id_header] = request_id
     response.headers[settings.process_time_header] = str(int(duration_ms))
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Permissions-Policy"] = "camera=(), geolocation=(), microphone=()"
     logger.info(
         "Request completed",
         extra={
@@ -153,6 +159,41 @@ async def observability_middleware(request: Request, call_next):
     return response
 
 
+async def rate_limit_middleware(request: Request, call_next):
+    settings = get_settings()
+    limiter: RateLimiter = request.app.state.rate_limiter
+    client_ip = request.client.host if request.client else "unknown"
+
+    limit_config = {
+        ("POST", "/obs/login"): (
+            "obs-login",
+            settings.obs_login_rate_limit,
+            settings.obs_login_rate_window_seconds,
+        ),
+        ("POST", "/vectorize"): (
+            "vectorize",
+            settings.vectorize_rate_limit,
+            settings.vectorize_rate_window_seconds,
+        ),
+    }.get((request.method, request.url.path))
+    if limit_config is not None:
+        bucket, limit, window_seconds = limit_config
+        if not limiter.allow(client_ip, bucket, limit, window_seconds):
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Too many requests. Please try again later."},
+                headers={
+                    "Retry-After": str(window_seconds),
+                    "X-Content-Type-Options": "nosniff",
+                    "X-Frame-Options": "DENY",
+                    "Referrer-Policy": "no-referrer",
+                    "Permissions-Policy": "camera=(), geolocation=(), microphone=()",
+                },
+            )
+
+    return await call_next(request)
+
+
 def create_app() -> FastAPI:
     configure_logging()
     settings = get_settings()
@@ -161,16 +202,21 @@ def create_app() -> FastAPI:
         title="Vectorizer Backend",
         version=settings.service_version,
         lifespan=app_lifespan,
+        docs_url=None if settings.deployment_environment == "production" else "/docs",
+        redoc_url=None if settings.deployment_environment == "production" else "/redoc",
+        openapi_url=None if settings.deployment_environment == "production" else "/openapi.json",
     )
+    app.state.rate_limiter = RateLimiter(max_keys=settings.rate_limit_max_keys)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=list(settings.cors_allow_origins),
-        allow_credentials=False,
+        allow_origins=list(settings.effective_cors_allow_origins),
+        allow_credentials=True,
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["*"],
     )
 
     app.middleware("http")(observability_middleware)
+    app.middleware("http")(rate_limit_middleware)
 
     app.include_router(health_router)
     app.include_router(vectorize_router)

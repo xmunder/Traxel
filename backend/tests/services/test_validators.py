@@ -113,3 +113,55 @@ def test_validate_uploaded_image_rejects_file_larger_than_size_limit(
 
     assert exc_info.value.status_code == 413
     assert exc_info.value.detail == "The uploaded image exceeds the 5 MB limit."
+
+
+def test_validate_uploaded_image_rejects_dimension_limit(
+    image_bytes_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OBS_MAX_IMAGE_DIMENSION", "16")
+    from src.config import get_settings
+
+    get_settings.cache_clear()
+    try:
+        upload = build_upload_file(
+            "wide.png", image_bytes_factory("PNG", size=(32, 8)), "image/png"
+        )
+        with pytest.raises(ImageValidationError) as exc_info:
+            run_validation(upload)
+    finally:
+        get_settings.cache_clear()
+
+    assert exc_info.value.status_code == 413
+    assert "dimensions" in exc_info.value.detail
+
+
+def test_validate_uploaded_image_rejects_pixel_limit(
+    image_bytes_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OBS_MAX_IMAGE_PIXELS", "100")
+    from src.config import get_settings
+
+    get_settings.cache_clear()
+    try:
+        upload = build_upload_file(
+            "pixels.png", image_bytes_factory("PNG", size=(11, 11)), "image/png"
+        )
+        with pytest.raises(ImageValidationError) as exc_info:
+            run_validation(upload)
+    finally:
+        get_settings.cache_clear()
+
+    assert exc_info.value.status_code == 413
+    assert "pixels" in exc_info.value.detail
+
+
+def test_validate_uploaded_image_rejects_extension_content_format_mismatch(
+    image_bytes_factory,
+) -> None:
+    upload = build_upload_file("image.jpg", image_bytes_factory("PNG"), "image/jpeg")
+
+    with pytest.raises(ImageValidationError) as exc_info:
+        run_validation(upload)
+
+    assert exc_info.value.status_code == 400
+    assert "does not match" in exc_info.value.detail

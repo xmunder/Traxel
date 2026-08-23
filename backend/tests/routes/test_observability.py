@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
@@ -9,16 +8,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.main import create_app
+from src.utils.obs_auth import SessionStore
 
 
 # ------------------------------------------------------------------ #
 # Helpers                                                              #
 # ------------------------------------------------------------------ #
-
-
-def basic_auth_header(username: str, password: str) -> str:
-    raw = f"{username}:{password}".encode()
-    return f"Basic {base64.b64encode(raw).decode()}"
 
 
 @contextmanager
@@ -28,6 +23,7 @@ def obs_client(
     username: str = "",
     secret: str = "",
     db_path: str = "",
+    deployment_environment: str | None = None,
 ):
     """Context manager that yields a TestClient whose lifespan has been started.
 
@@ -40,6 +36,8 @@ def obs_client(
     monkeypatch.setenv("OBS_USERNAME", username)
     monkeypatch.setenv("OBS_SECRET", secret)
     monkeypatch.setenv("OBS_DB_PATH", db_path)
+    if deployment_environment is not None:
+        monkeypatch.setenv("DEPLOYMENT_ENVIRONMENT", deployment_environment)
 
     from src.config import get_settings
 
@@ -47,6 +45,18 @@ def obs_client(
 
     app = create_app()
     with TestClient(app, raise_server_exceptions=False) as client:
+        if username and secret:
+            origin = (
+                "https://traxel.pages.dev"
+                if deployment_environment == "production"
+                else "http://localhost:4411"
+            )
+            login_response = client.post(
+                "/obs/login",
+                json={"username": username, "password": secret},
+                headers={"Origin": origin},
+            )
+            assert login_response.status_code == 200
         yield client
 
     # Clear the LRU cache after the test so the next test starts fresh.
@@ -74,268 +84,136 @@ def _seed_requests_via_store(client, rows: list[dict]) -> None:
     loop.run_until_complete(_go())
 
 
-# ------------------------------------------------------------------ #
-# 503 when credentials are not configured                              #
-# ------------------------------------------------------------------ #
+class TestCookieSessionContract:
+    def test_create_evicts_soonest_expiring_session_at_capacity(self) -> None:
+        store = SessionStore(max_sessions=2)
+        soonest = store.create(60)
+        later = store.create(120)
 
+        newest = store.create(180)
 
-class TestObsDisabledWhenUnconfigured:
-    def test_summary_returns_503_when_no_creds_configured(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        with obs_client(monkeypatch, username="", secret="") as client:
-            response = client.get(
-                "/obs/summary",
-                headers={"Authorization": basic_auth_header("any", "any")},
+        assert store.valid(soonest) is False
+        assert store.valid(later) is True
+        assert store.valid(newest) is True
+        assert len(store._sessions) == 2
+
+    def test_create_evicts_oldest_session_when_expiry_ties(self) -> None:
+        store = SessionStore(max_sessions=2)
+        first = store.create(60)
+        second = store.create(60)
+
+        newest = store.create(60)
+
+        assert store.valid(first) is False
+        assert store.valid(second) is True
+        assert store.valid(newest) is True
+
+    def test_expired_session_is_invalid(self) -> None:
+        store = SessionStore()
+        token = store.create(0)
+
+        assert store.valid(token) is False
+
+    def test_create_purges_expired_sessions(self) -> None:
+        store = SessionStore()
+        expired_token = store.create(0)
+
+        active_token = store.create(60)
+
+        assert expired_token not in store._sessions
+        assert store.valid(active_token) is True
+        assert len(store._sessions) == 1
+
+    def test_login_sets_session_cookie_attributes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        with obs_client(monkeypatch, username="admin", secret="secret") as client:
+            response = client.post(
+                "/obs/login",
+                json={"username": "admin", "password": "secret"},
+                headers={"Origin": "http://localhost:4411"},
             )
-        assert response.status_code == 503
 
-    def test_requests_returns_503_when_no_creds_configured(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        with obs_client(monkeypatch, username="", secret="") as client:
-            response = client.get(
-                "/obs/requests",
-                headers={"Authorization": basic_auth_header("any", "any")},
+        cookie = response.headers["set-cookie"]
+        assert "obs_session=" in cookie
+        assert "HttpOnly" in cookie
+        assert "SameSite=lax" in cookie
+        assert "Max-Age=3600" in cookie
+        assert "Secure" not in cookie
+
+    def test_valid_login_establishes_session(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        with obs_client(monkeypatch, username="admin", secret="secret") as client:
+            client.cookies.clear()
+            login = client.post(
+                "/obs/login",
+                json={"username": "admin", "password": "secret"},
+                headers={"Origin": "http://localhost:4411"},
             )
-        assert response.status_code == 503
 
-    def test_errors_returns_503_when_no_creds_configured(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        with obs_client(monkeypatch, username="", secret="") as client:
-            response = client.get(
-                "/obs/errors",
-                headers={"Authorization": basic_auth_header("any", "any")},
-            )
-        assert response.status_code == 503
+            assert login.status_code == 200
+            assert client.get("/obs/session").status_code == 200
 
-
-# ------------------------------------------------------------------ #
-# 401 on wrong credentials                                             #
-# ------------------------------------------------------------------ #
-
-
-class TestObsAuthGuard:
-    def test_summary_returns_401_on_wrong_password(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_production_session_cookie_is_secure(self, monkeypatch: pytest.MonkeyPatch) -> None:
         with obs_client(
-            monkeypatch, username="admin", secret="correctpassword"
+            monkeypatch,
+            username="admin",
+            secret="secret",
+            deployment_environment="production",
         ) as client:
-            response = client.get(
-                "/obs/summary",
-                headers={"Authorization": basic_auth_header("admin", "wrongpassword")},
+            response = client.post(
+                "/obs/login",
+                json={"username": "admin", "password": "secret"},
+                headers={"Origin": "https://traxel.pages.dev"},
             )
-        assert response.status_code == 401
 
-    def test_summary_returns_401_on_wrong_username(
-        self, monkeypatch: pytest.MonkeyPatch
+        assert "Secure" in response.headers["set-cookie"]
+
+    def test_logout_invalidates_session(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        with obs_client(monkeypatch, username="admin", secret="secret") as client:
+            assert client.get("/obs/session").status_code == 200
+            logout = client.post(
+                "/obs/logout", headers={"Origin": "http://localhost:4411"}
+            )
+            protected = client.get("/obs/summary")
+
+        assert logout.status_code == 200
+        assert protected.status_code == 401
+        assert "Max-Age=0" in logout.headers["set-cookie"]
+
+    @pytest.mark.parametrize(
+        "headers",
+        [{}, {"Origin": "https://attacker.example"}],
+        ids=["missing-origin", "untrusted-origin"],
+    )
+    def test_logout_rejects_requests_without_a_trusted_origin(
+        self, monkeypatch: pytest.MonkeyPatch, headers: dict[str, str]
     ) -> None:
-        with obs_client(
-            monkeypatch, username="admin", secret="correctpassword"
-        ) as client:
-            response = client.get(
-                "/obs/summary",
-                headers={
-                    "Authorization": basic_auth_header("wronguser", "correctpassword")
-                },
-            )
-        assert response.status_code == 401
+        with obs_client(monkeypatch, username="admin", secret="secret") as client:
+            response = client.post("/obs/logout", headers=headers)
 
-    def test_requests_returns_401_on_wrong_creds(
+        assert response.status_code == 403
+
+    def test_logout_accepts_configured_frontend_origin(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with obs_client(monkeypatch, username="admin", secret="secret") as client:
-            response = client.get(
-                "/obs/requests",
-                headers={"Authorization": basic_auth_header("admin", "bad")},
+            response = client.post(
+                "/obs/logout", headers={"Origin": "http://127.0.0.1:4411"}
             )
-        assert response.status_code == 401
 
-    def test_errors_returns_401_on_wrong_creds(
-        self, monkeypatch: pytest.MonkeyPatch
+        assert response.status_code == 200
+
+    @pytest.mark.parametrize(
+        "path", ["/obs/session", "/obs/summary", "/obs/requests", "/obs/errors", "/obs/timeseries"]
+    )
+    def test_protected_obs_routes_require_a_session(
+        self, monkeypatch: pytest.MonkeyPatch, path: str
     ) -> None:
         with obs_client(monkeypatch, username="admin", secret="secret") as client:
-            response = client.get(
-                "/obs/errors",
-                headers={"Authorization": basic_auth_header("admin", "bad")},
-            )
-        assert response.status_code == 401
+            client.cookies.clear()
+            response = client.get(path)
 
-    def test_summary_returns_401_when_no_auth_header(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        with obs_client(monkeypatch, username="admin", secret="secret") as client:
-            response = client.get("/obs/summary")
         assert response.status_code == 401
 
 
-# ------------------------------------------------------------------ #
-# Success cases with valid credentials                                 #
-# ------------------------------------------------------------------ #
-
-
-class TestObsSuccess:
-    def test_summary_returns_200_with_valid_creds(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        with obs_client(monkeypatch, username="admin", secret="s3cr3t") as client:
-            response = client.get(
-                "/obs/summary",
-                headers={"Authorization": basic_auth_header("admin", "s3cr3t")},
-            )
-        assert response.status_code == 200
-        data = response.json()
-        assert "total_requests" in data
-        assert "total_errors" in data
-        assert "status_counts" in data
-        assert "path_counts" in data
-        assert "requests_buffer_size" in data
-        assert "errors_buffer_size" in data
-
-    def test_requests_returns_200_with_valid_creds(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        with obs_client(monkeypatch, username="admin", secret="s3cr3t") as client:
-            response = client.get(
-                "/obs/requests",
-                headers={"Authorization": basic_auth_header("admin", "s3cr3t")},
-            )
-        assert response.status_code == 200
-        data = response.json()
-        assert "items" in data
-        assert "total" in data
-
-    def test_errors_returns_200_with_valid_creds(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        with obs_client(monkeypatch, username="admin", secret="s3cr3t") as client:
-            response = client.get(
-                "/obs/errors",
-                headers={"Authorization": basic_auth_header("admin", "s3cr3t")},
-            )
-        assert response.status_code == 200
-        data = response.json()
-        assert "items" in data
-        assert "total" in data
-
-    def test_summary_counts_recorded_after_health_request(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        with obs_client(monkeypatch, username="admin", secret="s3cr3t") as client:
-            # Trigger a /health request that the middleware should record
-            client.get("/health")
-            response = client.get(
-                "/obs/summary",
-                headers={"Authorization": basic_auth_header("admin", "s3cr3t")},
-            )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["total_requests"] >= 1
-
-    def test_summary_status_counts_have_string_keys(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """JSON object keys must always be strings (HTTP status codes as str)."""
-        with obs_client(monkeypatch, username="admin", secret="s3cr3t") as client:
-            client.get("/health")
-            response = client.get(
-                "/obs/summary",
-                headers={"Authorization": basic_auth_header("admin", "s3cr3t")},
-            )
-        assert response.status_code == 200
-        status_counts = response.json()["status_counts"]
-        for key in status_counts:
-            assert isinstance(key, str), f"Expected string key, got {type(key)}: {key}"
-
-
-# ------------------------------------------------------------------ #
-# /obs/* exclusion from metrics collection                             #
-# ------------------------------------------------------------------ #
-
-
-class TestObsExcludedFromMetrics:
-    def test_obs_requests_not_counted_in_total_requests(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Accessing /obs/* must not inflate total_requests counter."""
-        auth = basic_auth_header("admin", "s3cr3t")
-        with obs_client(monkeypatch, username="admin", secret="s3cr3t") as client:
-            # Access summary multiple times
-            for _ in range(3):
-                client.get("/obs/summary", headers={"Authorization": auth})
-
-            final = client.get("/obs/summary", headers={"Authorization": auth})
-        assert final.status_code == 200
-        data = final.json()
-        # total_requests should still be 0 since only /obs/* were called
-        assert data["total_requests"] == 0
-
-    def test_non_obs_requests_are_counted(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        auth = basic_auth_header("admin", "s3cr3t")
-        with obs_client(monkeypatch, username="admin", secret="s3cr3t") as client:
-            client.get("/health")
-            client.get("/health")
-            final = client.get("/obs/summary", headers={"Authorization": auth})
-        data = final.json()
-        assert data["total_requests"] >= 2
-
-
-# ------------------------------------------------------------------ #
-# Payload contracts                                                    #
-# ------------------------------------------------------------------ #
-
-
-class TestObsPayloadContracts:
-    def test_requests_item_has_required_fields(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        auth = basic_auth_header("admin", "s3cr3t")
-        with obs_client(monkeypatch, username="admin", secret="s3cr3t") as client:
-            client.get("/health")
-            response = client.get("/obs/requests", headers={"Authorization": auth})
-        assert response.status_code == 200
-        data = response.json()
-        assert data["total"] >= 1
-        item = data["items"][0]
-        assert set(item.keys()) == {
-            "timestamp",
-            "method",
-            "path",
-            "status_code",
-            "duration_ms",
-            "message",
-        }
-
-    def test_errors_item_has_required_fields_after_injection(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Verify schema by recording an error manually via the collector."""
-        auth = basic_auth_header("admin", "s3cr3t")
-        with obs_client(monkeypatch, username="admin", secret="s3cr3t") as client:
-            # Inject an error record directly into the collector via app state
-            collector = client.app.state.metrics_collector
-            collector.record_error(
-                method="POST",
-                path="/vectorize",
-                error_type="TestError",
-                error_detail="injected for test",
-            )
-            response = client.get("/obs/errors", headers={"Authorization": auth})
-        assert response.status_code == 200
-        data = response.json()
-        assert data["total"] >= 1
-        item = data["items"][0]
-        assert set(item.keys()) == {
-            "timestamp",
-            "method",
-            "path",
-            "error_type",
-            "error_detail",
-        }
 
 
 # ------------------------------------------------------------------ #
@@ -347,41 +225,28 @@ class TestObsSummaryQueryParams:
     """Summary endpoint must accept range and status query parameters."""
 
     def test_summary_accepts_range_param(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        auth = basic_auth_header("admin", "s3cr3t")
         with obs_client(monkeypatch, username="admin", secret="s3cr3t") as client:
-            response = client.get(
-                "/obs/summary?range=1h",
-                headers={"Authorization": auth},
-            )
+            response = client.get("/obs/summary?range=1h")
         assert response.status_code == 200
 
     def test_summary_accepts_status_param(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        auth = basic_auth_header("admin", "s3cr3t")
         with obs_client(monkeypatch, username="admin", secret="s3cr3t") as client:
-            response = client.get(
-                "/obs/summary?status=5xx",
-                headers={"Authorization": auth},
-            )
+            response = client.get("/obs/summary?status=5xx")
         assert response.status_code == 200
 
     def test_summary_accepts_exact_status_param(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        auth = basic_auth_header("admin", "s3cr3t")
         with obs_client(monkeypatch, username="admin", secret="s3cr3t") as client:
-            response = client.get(
-                "/obs/summary?status=500",
-                headers={"Authorization": auth},
-            )
+            response = client.get("/obs/summary?status=500")
         assert response.status_code == 200
 
     def test_summary_with_sqlite_returns_persisted_total(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """When SQLite is active, persisted_total is populated in the response."""
-        auth = basic_auth_header("admin", "s3cr3t")
         with obs_client(
             monkeypatch, username="admin", secret="s3cr3t", db_path=":memory:"
         ) as client:
@@ -398,10 +263,7 @@ class TestObsSummaryQueryParams:
                     )
                 ],
             )
-            response = client.get(
-                "/obs/summary",
-                headers={"Authorization": auth},
-            )
+            response = client.get("/obs/summary")
         assert response.status_code == 200
         data = response.json()
         assert data["persisted_total"] is not None
@@ -411,7 +273,6 @@ class TestObsSummaryQueryParams:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """status=5xx must only count 5xx rows in persisted_total."""
-        auth = basic_auth_header("admin", "s3cr3t")
         with obs_client(
             monkeypatch, username="admin", secret="s3cr3t", db_path=":memory:"
         ) as client:
@@ -442,10 +303,7 @@ class TestObsSummaryQueryParams:
                     ),
                 ],
             )
-            response = client.get(
-                "/obs/summary?status=5xx",
-                headers={"Authorization": auth},
-            )
+            response = client.get("/obs/summary?status=5xx")
         assert response.status_code == 200
         data = response.json()
         assert data["persisted_total"] == 2
@@ -453,7 +311,6 @@ class TestObsSummaryQueryParams:
     def test_summary_exact_status_filter_limits_persisted_total(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        auth = basic_auth_header("admin", "s3cr3t")
         with obs_client(
             monkeypatch, username="admin", secret="s3cr3t", db_path=":memory:"
         ) as client:
@@ -477,10 +334,7 @@ class TestObsSummaryQueryParams:
                     ),
                 ],
             )
-            response = client.get(
-                "/obs/summary?status=503",
-                headers={"Authorization": auth},
-            )
+            response = client.get("/obs/summary?status=503")
         assert response.status_code == 200
         data = response.json()
         assert data["persisted_total"] == 1
@@ -493,22 +347,18 @@ class TestObsRequestsQueryParams:
     def test_requests_accepts_limit_param(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        auth = basic_auth_header("admin", "s3cr3t")
         with obs_client(monkeypatch, username="admin", secret="s3cr3t") as client:
             response = client.get(
                 "/obs/requests?limit=5",
-                headers={"Authorization": auth},
             )
         assert response.status_code == 200
 
     def test_requests_accepts_offset_param(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        auth = basic_auth_header("admin", "s3cr3t")
         with obs_client(monkeypatch, username="admin", secret="s3cr3t") as client:
             response = client.get(
                 "/obs/requests?offset=0",
-                headers={"Authorization": auth},
             )
         assert response.status_code == 200
 
@@ -516,7 +366,6 @@ class TestObsRequestsQueryParams:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """When SQLite is active, /obs/requests uses the ObsStore."""
-        auth = basic_auth_header("admin", "s3cr3t")
         with obs_client(
             monkeypatch, username="admin", secret="s3cr3t", db_path=":memory:"
         ) as client:
@@ -535,7 +384,6 @@ class TestObsRequestsQueryParams:
             )
             response = client.get(
                 "/obs/requests",
-                headers={"Authorization": auth},
             )
         assert response.status_code == 200
         data = response.json()
@@ -549,7 +397,6 @@ class TestObsRequestsQueryParams:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """status=4xx must return only 4xx rows when using SQLite."""
-        auth = basic_auth_header("admin", "s3cr3t")
         with obs_client(
             monkeypatch, username="admin", secret="s3cr3t", db_path=":memory:"
         ) as client:
@@ -582,7 +429,6 @@ class TestObsRequestsQueryParams:
             )
             response = client.get(
                 "/obs/requests?status=4xx",
-                headers={"Authorization": auth},
             )
         assert response.status_code == 200
         data = response.json()
@@ -592,7 +438,6 @@ class TestObsRequestsQueryParams:
     def test_requests_exact_status_filter_with_sqlite(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        auth = basic_auth_header("admin", "s3cr3t")
         with obs_client(
             monkeypatch, username="admin", secret="s3cr3t", db_path=":memory:"
         ) as client:
@@ -625,7 +470,6 @@ class TestObsRequestsQueryParams:
             )
             response = client.get(
                 "/obs/requests?status=404",
-                headers={"Authorization": auth},
             )
         assert response.status_code == 200
         data = response.json()
@@ -637,7 +481,6 @@ class TestObsErrorsQueryParams:
     """Errors endpoint must accept limit query parameter."""
 
     def test_errors_accepts_limit_param(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        auth = basic_auth_header("admin", "s3cr3t")
         with obs_client(monkeypatch, username="admin", secret="s3cr3t") as client:
             collector = client.app.state.metrics_collector
             for i in range(5):
@@ -649,7 +492,6 @@ class TestObsErrorsQueryParams:
                 )
             response = client.get(
                 "/obs/errors?limit=2",
-                headers={"Authorization": auth},
             )
         assert response.status_code == 200
         data = response.json()
@@ -659,7 +501,6 @@ class TestObsErrorsQueryParams:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Without explicit limit, errors should return up to the configured max."""
-        auth = basic_auth_header("admin", "s3cr3t")
         with obs_client(monkeypatch, username="admin", secret="s3cr3t") as client:
             collector = client.app.state.metrics_collector
             for i in range(3):
@@ -671,7 +512,6 @@ class TestObsErrorsQueryParams:
                 )
             response = client.get(
                 "/obs/errors",
-                headers={"Authorization": auth},
             )
         assert response.status_code == 200
         data = response.json()
@@ -690,6 +530,7 @@ class TestObsTimeseries:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with obs_client(monkeypatch, username="admin", secret="s3cr3t") as client:
+            client.cookies.clear()
             response = client.get("/obs/timeseries")
         assert response.status_code == 401
 
@@ -697,24 +538,20 @@ class TestObsTimeseries:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Without SQLite, timeseries endpoint returns 503."""
-        auth = basic_auth_header("admin", "s3cr3t")
         with obs_client(monkeypatch, username="admin", secret="s3cr3t") as client:
             response = client.get(
                 "/obs/timeseries",
-                headers={"Authorization": auth},
             )
         assert response.status_code == 503
 
     def test_timeseries_returns_200_with_sqlite(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        auth = basic_auth_header("admin", "s3cr3t")
         with obs_client(
             monkeypatch, username="admin", secret="s3cr3t", db_path=":memory:"
         ) as client:
             response = client.get(
                 "/obs/timeseries",
-                headers={"Authorization": auth},
             )
         assert response.status_code == 200
         data = response.json()
@@ -726,13 +563,11 @@ class TestObsTimeseries:
     def test_timeseries_default_range_is_12h(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        auth = basic_auth_header("admin", "s3cr3t")
         with obs_client(
             monkeypatch, username="admin", secret="s3cr3t", db_path=":memory:"
         ) as client:
             response = client.get(
                 "/obs/timeseries",
-                headers={"Authorization": auth},
             )
         assert response.status_code == 200
         assert response.json()["range"] == "12h"
@@ -740,13 +575,11 @@ class TestObsTimeseries:
     def test_timeseries_accepts_range_param(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        auth = basic_auth_header("admin", "s3cr3t")
         with obs_client(
             monkeypatch, username="admin", secret="s3cr3t", db_path=":memory:"
         ) as client:
             response = client.get(
                 "/obs/timeseries?range=1h",
-                headers={"Authorization": auth},
             )
         assert response.status_code == 200
         assert response.json()["range"] == "1h"
@@ -754,39 +587,33 @@ class TestObsTimeseries:
     def test_timeseries_accepts_status_param(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        auth = basic_auth_header("admin", "s3cr3t")
         with obs_client(
             monkeypatch, username="admin", secret="s3cr3t", db_path=":memory:"
         ) as client:
             response = client.get(
                 "/obs/timeseries?status=5xx",
-                headers={"Authorization": auth},
             )
         assert response.status_code == 200
 
     def test_timeseries_accepts_exact_status_param(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        auth = basic_auth_header("admin", "s3cr3t")
         with obs_client(
             monkeypatch, username="admin", secret="s3cr3t", db_path=":memory:"
         ) as client:
             response = client.get(
                 "/obs/timeseries?status=500",
-                headers={"Authorization": auth},
             )
         assert response.status_code == 200
 
     def test_timeseries_returns_400_on_invalid_range(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        auth = basic_auth_header("admin", "s3cr3t")
         with obs_client(
             monkeypatch, username="admin", secret="s3cr3t", db_path=":memory:"
         ) as client:
             response = client.get(
                 "/obs/timeseries?range=99y",
-                headers={"Authorization": auth},
             )
         assert response.status_code == 400
 
@@ -794,13 +621,11 @@ class TestObsTimeseries:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """bucket_width for 30m range must be '5m' per BUCKET_MAP."""
-        auth = basic_auth_header("admin", "s3cr3t")
         with obs_client(
             monkeypatch, username="admin", secret="s3cr3t", db_path=":memory:"
         ) as client:
             response = client.get(
                 "/obs/timeseries?range=30m",
-                headers={"Authorization": auth},
             )
         assert response.status_code == 200
         assert response.json()["bucket_width"] == "5m"
@@ -809,7 +634,6 @@ class TestObsTimeseries:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Timeseries endpoint accepts from_ts and to_ts query params."""
-        auth = basic_auth_header("admin", "s3cr3t")
         with obs_client(
             monkeypatch, username="admin", secret="s3cr3t", db_path=":memory:"
         ) as client:
@@ -828,7 +652,6 @@ class TestObsTimeseries:
             )
             response = client.get(
                 f"/obs/timeseries?range=1h&from_ts={ts}&to_ts={ts}",
-                headers={"Authorization": auth},
             )
         assert response.status_code == 200
         data = response.json()
@@ -838,7 +661,6 @@ class TestObsTimeseries:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """from_ts/to_ts narrow the timeseries to the specified window."""
-        auth = basic_auth_header("admin", "s3cr3t")
         with obs_client(
             monkeypatch, username="admin", secret="s3cr3t", db_path=":memory:"
         ) as client:
@@ -880,7 +702,6 @@ class TestObsTimeseries:
             to_ts = (now - timedelta(minutes=4)).isoformat()
             response = client.get(
                 f"/obs/timeseries?range=30m&from_ts={from_ts}&to_ts={to_ts}",
-                headers={"Authorization": auth},
             )
         assert response.status_code == 200
         data = response.json()
@@ -890,7 +711,6 @@ class TestObsTimeseries:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Rows persisted to SQLite appear in timeseries buckets."""
-        auth = basic_auth_header("admin", "s3cr3t")
         with obs_client(
             monkeypatch, username="admin", secret="s3cr3t", db_path=":memory:"
         ) as client:
@@ -910,7 +730,6 @@ class TestObsTimeseries:
             )
             response = client.get(
                 "/obs/timeseries?range=5m",
-                headers={"Authorization": auth},
             )
         assert response.status_code == 200
         data = response.json()
@@ -920,7 +739,6 @@ class TestObsTimeseries:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Each timeseries bucket must include exact and family status breakdown fields."""
-        auth = basic_auth_header("admin", "s3cr3t")
         with obs_client(
             monkeypatch, username="admin", secret="s3cr3t", db_path=":memory:"
         ) as client:
@@ -953,7 +771,6 @@ class TestObsTimeseries:
             )
             response = client.get(
                 "/obs/timeseries?range=5m",
-                headers={"Authorization": auth},
             )
         assert response.status_code == 200
         data = response.json()
@@ -980,7 +797,6 @@ class TestObsDisabledWhenUnconfigured:
         with obs_client(monkeypatch, username="", secret="") as client:
             response = client.get(
                 "/obs/summary",
-                headers={"Authorization": basic_auth_header("any", "any")},
             )
         assert response.status_code == 503
 
@@ -990,7 +806,6 @@ class TestObsDisabledWhenUnconfigured:
         with obs_client(monkeypatch, username="", secret="") as client:
             response = client.get(
                 "/obs/requests",
-                headers={"Authorization": basic_auth_header("any", "any")},
             )
         assert response.status_code == 503
 
@@ -1000,7 +815,6 @@ class TestObsDisabledWhenUnconfigured:
         with obs_client(monkeypatch, username="", secret="") as client:
             response = client.get(
                 "/obs/errors",
-                headers={"Authorization": basic_auth_header("any", "any")},
             )
         assert response.status_code == 503
 
@@ -1011,49 +825,43 @@ class TestObsDisabledWhenUnconfigured:
 
 
 class TestObsAuthGuard:
-    def test_summary_returns_401_on_wrong_password(
+    def test_login_rejects_missing_origin(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        with obs_client(monkeypatch, username="admin", secret="correctpassword") as client:
+            client.cookies.clear()
+            response = client.post(
+                "/obs/login",
+                json={"username": "admin", "password": "correctpassword"},
+            )
+
+        assert response.status_code == 403
+
+    def test_login_returns_401_on_wrong_password(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with obs_client(
             monkeypatch, username="admin", secret="correctpassword"
         ) as client:
-            response = client.get(
-                "/obs/summary",
-                headers={"Authorization": basic_auth_header("admin", "wrongpassword")},
+            client.cookies.clear()
+            response = client.post(
+                "/obs/login",
+                json={"username": "admin", "password": "wrongpassword"},
+                headers={"Origin": "http://localhost:4411"},
             )
         assert response.status_code == 401
 
-    def test_summary_returns_401_on_wrong_username(
+    def test_login_returns_401_on_wrong_username(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with obs_client(
             monkeypatch, username="admin", secret="correctpassword"
         ) as client:
-            response = client.get(
-                "/obs/summary",
-                headers={
-                    "Authorization": basic_auth_header("wronguser", "correctpassword")
-                },
-            )
-        assert response.status_code == 401
-
-    def test_requests_returns_401_on_wrong_creds(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        with obs_client(monkeypatch, username="admin", secret="secret") as client:
-            response = client.get(
-                "/obs/requests",
-                headers={"Authorization": basic_auth_header("admin", "bad")},
-            )
-        assert response.status_code == 401
-
-    def test_errors_returns_401_on_wrong_creds(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        with obs_client(monkeypatch, username="admin", secret="secret") as client:
-            response = client.get(
-                "/obs/errors",
-                headers={"Authorization": basic_auth_header("admin", "bad")},
+            client.cookies.clear()
+            response = client.post(
+                "/obs/login",
+                json={"username": "wronguser", "password": "correctpassword"},
+                headers={"Origin": "http://localhost:4411"},
             )
         assert response.status_code == 401
 
@@ -1061,6 +869,7 @@ class TestObsAuthGuard:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with obs_client(monkeypatch, username="admin", secret="secret") as client:
+            client.cookies.clear()
             response = client.get("/obs/summary")
         assert response.status_code == 401
 
@@ -1077,7 +886,6 @@ class TestObsSuccess:
         with obs_client(monkeypatch, username="admin", secret="s3cr3t") as client:
             response = client.get(
                 "/obs/summary",
-                headers={"Authorization": basic_auth_header("admin", "s3cr3t")},
             )
         assert response.status_code == 200
         data = response.json()
@@ -1094,7 +902,6 @@ class TestObsSuccess:
         with obs_client(monkeypatch, username="admin", secret="s3cr3t") as client:
             response = client.get(
                 "/obs/requests",
-                headers={"Authorization": basic_auth_header("admin", "s3cr3t")},
             )
         assert response.status_code == 200
         data = response.json()
@@ -1107,7 +914,6 @@ class TestObsSuccess:
         with obs_client(monkeypatch, username="admin", secret="s3cr3t") as client:
             response = client.get(
                 "/obs/errors",
-                headers={"Authorization": basic_auth_header("admin", "s3cr3t")},
             )
         assert response.status_code == 200
         data = response.json()
@@ -1122,7 +928,6 @@ class TestObsSuccess:
             client.get("/health")
             response = client.get(
                 "/obs/summary",
-                headers={"Authorization": basic_auth_header("admin", "s3cr3t")},
             )
         assert response.status_code == 200
         data = response.json()
@@ -1136,7 +941,6 @@ class TestObsSuccess:
             client.get("/health")
             response = client.get(
                 "/obs/summary",
-                headers={"Authorization": basic_auth_header("admin", "s3cr3t")},
             )
         assert response.status_code == 200
         status_counts = response.json()["status_counts"]
@@ -1154,13 +958,12 @@ class TestObsExcludedFromMetrics:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Accessing /obs/* must not inflate total_requests counter."""
-        auth = basic_auth_header("admin", "s3cr3t")
         with obs_client(monkeypatch, username="admin", secret="s3cr3t") as client:
             # Access summary multiple times
             for _ in range(3):
-                client.get("/obs/summary", headers={"Authorization": auth})
+                client.get("/obs/summary")
 
-            final = client.get("/obs/summary", headers={"Authorization": auth})
+            final = client.get("/obs/summary")
         assert final.status_code == 200
         data = final.json()
         # total_requests should still be 0 since only /obs/* were called
@@ -1169,11 +972,10 @@ class TestObsExcludedFromMetrics:
     def test_non_obs_requests_are_counted(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        auth = basic_auth_header("admin", "s3cr3t")
         with obs_client(monkeypatch, username="admin", secret="s3cr3t") as client:
             client.get("/health")
             client.get("/health")
-            final = client.get("/obs/summary", headers={"Authorization": auth})
+            final = client.get("/obs/summary")
         data = final.json()
         assert data["total_requests"] >= 2
 
@@ -1187,10 +989,9 @@ class TestObsPayloadContracts:
     def test_requests_item_has_required_fields(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        auth = basic_auth_header("admin", "s3cr3t")
         with obs_client(monkeypatch, username="admin", secret="s3cr3t") as client:
             client.get("/health")
-            response = client.get("/obs/requests", headers={"Authorization": auth})
+            response = client.get("/obs/requests")
         assert response.status_code == 200
         data = response.json()
         assert data["total"] >= 1
@@ -1208,7 +1009,6 @@ class TestObsPayloadContracts:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Verify schema by recording an error manually via the collector."""
-        auth = basic_auth_header("admin", "s3cr3t")
         with obs_client(monkeypatch, username="admin", secret="s3cr3t") as client:
             # Inject an error record directly into the collector via app state
             collector = client.app.state.metrics_collector
@@ -1218,7 +1018,7 @@ class TestObsPayloadContracts:
                 error_type="TestError",
                 error_detail="injected for test",
             )
-            response = client.get("/obs/errors", headers={"Authorization": auth})
+            response = client.get("/obs/errors")
         assert response.status_code == 200
         data = response.json()
         assert data["total"] >= 1

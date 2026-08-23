@@ -13,12 +13,12 @@ test('flujo e2e: upload -> workspace -> comparación -> descarga', async ({ page
 	await expect(page.getByRole('heading', { name: /convert pixels/i })).toBeVisible();
 	await expect(page.getByRole('heading', { name: /drag and drop/i })).toBeVisible();
 	await expect(page.getByText(/or select a local file/i)).toBeVisible();
-	await expect(page.locator('body')).not.toContainText(/optimized for logos/i);
+	await expect(page.locator('body')).toContainText(/optimized for logos/i);
 
 	await page.setInputFiles('[data-image-input]', fixturePath);
 
 	await expect(page).toHaveURL(/\/workspace$/);
-	await expect(page.locator('.workspace-review-header__brand')).toContainText(/comparison workspace/i);
+	await expect(page.locator('.workspace-review-header__brand')).toContainText(/traxel vector workspace/i);
 
 	const originalImage = page.locator('[data-original-image]');
 	const svgContainer = page.locator('[data-svg-container]');

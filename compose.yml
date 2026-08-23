@@ -12,8 +12,14 @@ services:
       OBS_SECRET: ${OBS_SECRET:-}
       OBS_DB_PATH: ${OBS_DB_PATH:-data/obs.db}
       OBS_RETENTION_DAYS: ${OBS_RETENTION_DAYS:-30}
+      TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS:-127.0.0.1}
     ports:
       - "8000:8000"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
     volumes:
       - obs_data:/app/data
     networks:
@@ -23,6 +29,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        PUBLIC_BACKEND_ENDPOINT: ${PUBLIC_BACKEND_ENDPOINT:-http://localhost:8000}
     depends_on:
       backend:
         condition: service_healthy
@@ -30,6 +38,11 @@ services:
       PUBLIC_BACKEND_ENDPOINT: ${PUBLIC_BACKEND_ENDPOINT:-http://localhost:8000}
     ports:
       - "4321:4321"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
     networks:
       - vectorizer-app
 

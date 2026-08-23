@@ -209,12 +209,13 @@ class ObsStore:
     ) -> None:
         """Add a request record to the write queue (non-blocking)."""
         await asyncio.sleep(0)
+        normalized_path = path[:255]
         try:
             self._queue.put_nowait(
                 {
                     "timestamp": timestamp,
                     "method": method,
-                    "path": path,
+                    "path": normalized_path,
                     "status_code": status_code,
                     "duration_ms": duration_ms,
                 }

@@ -92,12 +92,17 @@ The `compose.yml` file exposes these overrides:
 - `PUBLIC_BACKEND_ENDPOINT`
 - `LOG_LEVEL`
 - `DEPLOYMENT_ENVIRONMENT`
+- `TRUSTED_PROXY_IPS` (comma-separated proxy IPs allowed to provide forwarded client IP headers)
 
 Example:
 
 ```bash
 PUBLIC_BACKEND_ENDPOINT=http://localhost:8000 docker compose up --build
 ```
+
+The observability session store is intentionally process-local. Keep the backend
+at one worker unless a shared session backend is introduced for multi-worker or
+multi-replica deployments.
 
 ## Basic Docker commands
 
