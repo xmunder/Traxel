@@ -49,6 +49,34 @@ class Settings(BaseSettings):
     # the /obs/* endpoints.  If either is empty the endpoints return 503.
     obs_username: str = ""
     obs_secret: str = ""
+    # Sessions are process-local by design; use a shared store before scaling
+    # the backend horizontally.
+    obs_session_cookie: str = "obs_session"
+    obs_session_ttl_seconds: int = 3600
+    # The in-memory store is intentionally bounded because it is process-local.
+    obs_session_max_sessions: int = 1024
+    obs_cookie_secure: bool | None = None
+    obs_login_rate_limit: int = 5
+    obs_login_rate_window_seconds: int = 60
+    vectorize_rate_limit: int = 20
+    vectorize_rate_window_seconds: int = 60
+    rate_limit_max_keys: int = 10_000
+    obs_max_image_pixels: int = 16_777_216
+    obs_max_image_dimension: int = 8192
+
+    @property
+    def session_cookie_secure(self) -> bool:
+        return self.obs_cookie_secure if self.obs_cookie_secure is not None else self.deployment_environment == "production"
+
+    @property
+    def effective_cors_allow_origins(self) -> tuple[str, ...]:
+        if self.deployment_environment == "production":
+            return tuple(
+                origin
+                for origin in self.cors_allow_origins
+                if not origin.startswith(("http://localhost", "http://127.0.0.1"))
+            )
+        return self.cors_allow_origins
 
     # Maximum entries returned by /obs/requests and /obs/errors.
     obs_requests_limit: int = 200
