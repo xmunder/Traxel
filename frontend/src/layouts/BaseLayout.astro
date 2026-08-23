@@ -28,6 +28,20 @@ const {
 } = Astro.props;
 
 const canonicalBase = Astro.site?.href ?? 'https://traxel.pages.dev/';
+const backendOrigin = new URL(
+	import.meta.env.PUBLIC_BACKEND_ENDPOINT ?? 'http://localhost:8000',
+).origin;
+const contentSecurityPolicy = [
+	"default-src 'self'",
+	"base-uri 'self'",
+	"object-src 'none'",
+	"frame-ancestors 'none'",
+	"img-src 'self' data: blob:",
+	"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+	"font-src 'self' https://fonts.gstatic.com",
+	`connect-src 'self' ${backendOrigin}`,
+	"script-src 'self'",
+].join('; ');
 
 const meta = buildHeadMeta({ title, description, canonicalBase, pathname, robots });
 ---
@@ -40,6 +54,7 @@ const meta = buildHeadMeta({ title, description, canonicalBase, pathname, robots
 		<meta name="generator" content={Astro.generator} />
 		<meta name="theme-color" content="#0b0f0c" />
 		<meta name="color-scheme" content="dark" />
+		<meta http-equiv="Content-Security-Policy" content={contentSecurityPolicy} />
 
 		<title>{meta.title}</title>
 		{meta.description && <meta name="description" content={meta.description} />}

@@ -311,7 +311,7 @@ describe('vectorizer app UI behavior', () => {
 			ok: true,
 			status: 200,
 			body: {
-				svg: '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><script>alert(1)</script><path fill="#f00" onclick="bad()"/></svg>',
+				svg: '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><script>alert(1)</script><foreignObject><div>bad</div></foreignObject><use href="javascript:alert(1)"/><path fill="#f00" onclick="bad()"/></svg>',
 				metadata: { colors_detected: 1, paths_generated: 1, duration_ms: 4 },
 			},
 		});
@@ -324,6 +324,8 @@ describe('vectorizer app UI behavior', () => {
 			const stored = await readWorkspaceResult();
 			expect(stored?.svg).not.toContain('<script');
 			expect(stored?.svg).not.toContain('onclick');
+			expect(stored?.svg).not.toContain('foreignObject');
+			expect(stored?.svg).not.toContain('javascript:');
 			expect(stored?.svg).not.toContain('width="10"');
 			expect(stored?.originalSvg).toBe(stored?.svg);
 		} finally {

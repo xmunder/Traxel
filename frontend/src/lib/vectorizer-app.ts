@@ -1,3 +1,4 @@
+import DOMPurify from 'dompurify';
 import {
 	clearWorkspaceResult,
 	readWorkspaceResult,
@@ -64,23 +65,19 @@ function buildDownloadFilename(filename: string): string {
 }
 
 function sanitizeSvg(svgText: string): string {
+	const sanitizedSvg = DOMPurify.sanitize(svgText, {
+		USE_PROFILES: { svg: true },
+		FORBID_TAGS: ['foreignObject'],
+		FORBID_ATTR: ['href', 'xlink:href'],
+	});
 	const documentParser = new DOMParser();
-	const parsed = documentParser.parseFromString(svgText, 'image/svg+xml');
+	const parsed = documentParser.parseFromString(sanitizedSvg, 'image/svg+xml');
 	const parserError = parsed.querySelector('parsererror');
 	const svg = parsed.querySelector('svg');
 
 	if (parserError || !svg) {
 		throw new Error('Invalid SVG received from the backend.');
 	}
-
-	parsed.querySelectorAll('script').forEach((node) => node.remove());
-	parsed.querySelectorAll('*').forEach((element) => {
-		for (const attribute of Array.from(element.attributes)) {
-			if (attribute.name.toLowerCase().startsWith('on')) {
-				element.removeAttribute(attribute.name);
-			}
-		}
-	});
 
 	svg.removeAttribute('width');
 	svg.removeAttribute('height');
