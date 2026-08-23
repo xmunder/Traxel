@@ -3,21 +3,6 @@ import { JSDOM } from 'jsdom';
 
 // ─── Shared test utilities ─────────────────────────────────────────
 
-type MockCredentials = { username: string; password: string } | null;
-
-function buildSessionStorage(initial: MockCredentials = null) {
-	const store = new Map<string, string>();
-	if (initial) {
-		store.set('obs-creds', JSON.stringify(initial));
-	}
-	return {
-		getItem: (key: string) => store.get(key) ?? null,
-		setItem: (key: string, value: string) => { store.set(key, value); },
-		removeItem: (key: string) => { store.delete(key); },
-		clear: () => store.clear(),
-	};
-}
-
 /**
  * Wire a listener that captures the last `obs:navigate` event path.
  * Returns a ref object { value: '' } that gets updated whenever
@@ -33,20 +18,16 @@ function captureNavigation(domWindow: Window): { value: string } {
 	return ref;
 }
 
-function setupDom(html: string, sessionInitial: MockCredentials = null) {
+function setupDom(html: string) {
 	const dom = new JSDOM(html, { url: 'http://tracelab.test' });
 	const native = {
 		window: globalThis.window,
 		document: globalThis.document,
-		sessionStorage: globalThis.sessionStorage,
 	};
-
-	const sessionStorage = buildSessionStorage(sessionInitial);
 
 	Object.assign(globalThis, {
 		window: dom.window,
 		document: dom.window.document,
-		sessionStorage,
 	});
 
 	// Capture navigation events instead of redefining window.location.
@@ -58,150 +39,32 @@ function setupDom(html: string, sessionInitial: MockCredentials = null) {
 		Object.assign(globalThis, native);
 	};
 
-	return { dom, cleanup, sessionStorage, navigatedTo };
+	return { dom, cleanup, navigatedTo };
 }
 
 // ─── obs-auth tests ────────────────────────────────────────────────
 
-describe('obs-auth: credential management', () => {
-	afterEach(() => {
-		vi.resetModules();
-	});
+describe('obs-auth: cookie session flow', () => {
+	afterEach(() => vi.resetModules());
 
-	test('saveCredentials persists to sessionStorage', async () => {
-		const { cleanup, sessionStorage } = setupDom('<html><body></body></html>');
-		try {
-			const { saveCredentials } = await import('../src/lib/obs-auth');
-			saveCredentials({ username: 'admin', password: 'secret' });
-			const raw = sessionStorage.getItem('obs-creds');
-			expect(raw).not.toBeNull();
-			const parsed = JSON.parse(raw!);
-			expect(parsed).toEqual({ username: 'admin', password: 'secret' });
-		} finally {
-			cleanup();
-		}
-	});
-
-	test('loadCredentials returns null when nothing stored', async () => {
+	test('does not expose or persist credentials in browser storage', async () => {
 		const { cleanup } = setupDom('<html><body></body></html>');
 		try {
-			const { loadCredentials } = await import('../src/lib/obs-auth');
-			expect(loadCredentials()).toBeNull();
-		} finally {
-			cleanup();
-		}
+			const auth = await import('../src/lib/obs-auth');
+			expect('saveCredentials' in auth).toBe(false);
+			expect('encodeBasic' in auth).toBe(false);
+		} finally { cleanup(); }
 	});
 
-	test('loadCredentials returns stored credentials', async () => {
-		const { cleanup } = setupDom(
-			'<html><body></body></html>',
-			{ username: 'admin', password: 'pass123' },
-		);
-		try {
-			const { loadCredentials } = await import('../src/lib/obs-auth');
-			const creds = loadCredentials();
-			expect(creds).toEqual({ username: 'admin', password: 'pass123' });
-		} finally {
-			cleanup();
-		}
-	});
-
-	test('loadCredentials returns null for malformed stored credentials', async () => {
-		const { cleanup, sessionStorage } = setupDom('<html><body></body></html>');
-		try {
-			sessionStorage.setItem('obs-creds', '{invalid-json');
-			const { loadCredentials } = await import('../src/lib/obs-auth');
-			expect(loadCredentials()).toBeNull();
-		} finally {
-			cleanup();
-		}
-	});
-
-	test('initObsLogin returns when the login form is unavailable', async () => {
+	test('hasSession uses the cookie credential mode', async () => {
 		const { cleanup } = setupDom('<html><body></body></html>');
+		const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+		Object.assign(globalThis, { fetch: fetchMock });
 		try {
-			const { initObsLogin } = await import('../src/lib/obs-auth');
-			expect(() => initObsLogin()).not.toThrow();
-		} finally {
-			cleanup();
-		}
-	});
-
-	test('requireAuth returns a safe placeholder while redirecting without credentials', async () => {
-		const { cleanup } = setupDom('<html><body></body></html>');
-		try {
-			const { requireAuth } = await import('../src/lib/obs-auth');
-			expect(requireAuth()).toEqual({ username: '', password: '' });
-		} finally {
-			cleanup();
-		}
-	});
-
-	test('clearCredentials removes stored credentials', async () => {
-		const { cleanup, sessionStorage } = setupDom(
-			'<html><body></body></html>',
-			{ username: 'admin', password: 'pass' },
-		);
-		try {
-			const { clearCredentials, loadCredentials } = await import('../src/lib/obs-auth');
-			clearCredentials();
-			expect(loadCredentials()).toBeNull();
-			expect(sessionStorage.getItem('obs-creds')).toBeNull();
-		} finally {
-			cleanup();
-		}
-	});
-
-	test('encodeBasic produces correct Basic auth header', async () => {
-		const { cleanup } = setupDom('<html><body></body></html>');
-		try {
-			const { encodeBasic } = await import('../src/lib/obs-auth');
-			const header = encodeBasic('admin', 'secret');
-			expect(header).toBe(`Basic ${btoa('admin:secret')}`);
-		} finally {
-			cleanup();
-		}
-	});
-
-	test('loginErrorForStatus returns correct message for 401', async () => {
-		const { cleanup } = setupDom('<html><body></body></html>');
-		try {
-			const { loginErrorForStatus } = await import('../src/lib/obs-auth');
-			expect(loginErrorForStatus(401)).toContain('Invalid credentials');
-		} finally {
-			cleanup();
-		}
-	});
-
-	test('loginErrorForStatus returns correct message for 403', async () => {
-		const { cleanup } = setupDom('<html><body></body></html>');
-		try {
-			const { loginErrorForStatus } = await import('../src/lib/obs-auth');
-			expect(loginErrorForStatus(403)).toContain('Invalid credentials');
-		} finally {
-			cleanup();
-		}
-	});
-
-	test('loginErrorForStatus returns not-configured message for 503', async () => {
-		const { cleanup } = setupDom('<html><body></body></html>');
-		try {
-			const { loginErrorForStatus } = await import('../src/lib/obs-auth');
-			expect(loginErrorForStatus(503)).toContain('not configured');
-		} finally {
-			cleanup();
-		}
-	});
-
-	test('loginErrorForStatus returns generic message for unexpected status', async () => {
-		const { cleanup } = setupDom('<html><body></body></html>');
-		try {
-			const { loginErrorForStatus } = await import('../src/lib/obs-auth');
-			const msg = loginErrorForStatus(500);
-			expect(msg).toContain('500');
-		} finally {
-			cleanup();
-		}
+			const { hasSession } = await import('../src/lib/obs-auth');
+			expect(await hasSession('http://api.test')).toBe(true);
+			expect(fetchMock).toHaveBeenCalledWith('http://api.test/obs/session', { credentials: 'include' });
+		} finally { cleanup(); }
 	});
 });
 
@@ -270,45 +133,16 @@ describe('initObsLogin: login flow', () => {
 			await new Promise((r) => setTimeout(r, 50));
 
 			expect(fetchMock).toHaveBeenCalledOnce();
-			expect(fetchMock.mock.calls[0][0]).toContain('/obs/summary');
+			expect(fetchMock.mock.calls[0][0]).toContain('/obs/login');
+			expect(fetchMock.mock.calls[0][1]).toMatchObject({ credentials: 'include' });
 			expect(navigatedTo.value).toBe('/observability/dashboard');
 		} finally {
 			cleanup();
 		}
 	});
 
-	test('saves credentials only after successful verification', async () => {
-		const { dom, cleanup, sessionStorage } = setupDom(LOGIN_HTML);
-		const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
-		Object.assign(globalThis, { fetch: fetchMock });
-
-		try {
-			const { initObsLogin } = await import('../src/lib/obs-auth');
-			initObsLogin();
-
-			const usernameInput = dom.window.document.querySelector<HTMLInputElement>('[data-obs-username]');
-			const passwordInput = dom.window.document.querySelector<HTMLInputElement>('[data-obs-password]');
-			usernameInput!.value = 'admin';
-			passwordInput!.value = 'mypassword';
-
-			const form = dom.window.document.querySelector<HTMLFormElement>('[data-obs-login-form]');
-			form!.dispatchEvent(new dom.window.Event('submit', { bubbles: true }));
-
-			// Credentials must NOT be stored before the fetch resolves.
-			expect(sessionStorage.getItem('obs-creds')).toBeNull();
-
-			await new Promise((r) => setTimeout(r, 50));
-
-			const raw = sessionStorage.getItem('obs-creds');
-			expect(raw).not.toBeNull();
-			expect(JSON.parse(raw!)).toEqual({ username: 'admin', password: 'mypassword' });
-		} finally {
-			cleanup();
-		}
-	});
-
 	test('stays on login and shows error on 401 response', async () => {
-		const { dom, cleanup, sessionStorage, navigatedTo } = setupDom(LOGIN_HTML);
+		const { dom, cleanup, navigatedTo } = setupDom(LOGIN_HTML);
 		const fetchMock = vi.fn(async () =>
 			new Response(JSON.stringify({ detail: 'Unauthorized' }), { status: 401 }),
 		);
@@ -330,8 +164,6 @@ describe('initObsLogin: login flow', () => {
 
 			// Must NOT have navigated away.
 			expect(navigatedTo.value).not.toBe('/observability/dashboard');
-			// Must NOT have persisted credentials.
-			expect(sessionStorage.getItem('obs-creds')).toBeNull();
 			// Must show error message.
 			const errorBox = dom.window.document.querySelector<HTMLElement>('[data-obs-login-error]');
 			expect(errorBox?.hidden).toBe(false);
@@ -342,7 +174,7 @@ describe('initObsLogin: login flow', () => {
 	});
 
 	test('stays on login and shows error on 403 response', async () => {
-		const { dom, cleanup, sessionStorage, navigatedTo } = setupDom(LOGIN_HTML);
+		const { dom, cleanup, navigatedTo } = setupDom(LOGIN_HTML);
 		const fetchMock = vi.fn(async () =>
 			new Response(JSON.stringify({ detail: 'Forbidden' }), { status: 403 }),
 		);
@@ -363,7 +195,6 @@ describe('initObsLogin: login flow', () => {
 			await new Promise((r) => setTimeout(r, 50));
 
 			expect(navigatedTo.value).not.toBe('/observability/dashboard');
-			expect(sessionStorage.getItem('obs-creds')).toBeNull();
 			const errorBox = dom.window.document.querySelector<HTMLElement>('[data-obs-login-error]');
 			expect(errorBox?.hidden).toBe(false);
 			expect(errorBox?.textContent).toContain('Invalid credentials');
@@ -373,7 +204,7 @@ describe('initObsLogin: login flow', () => {
 	});
 
 	test('stays on login and shows error on 503 response', async () => {
-		const { dom, cleanup, sessionStorage, navigatedTo } = setupDom(LOGIN_HTML);
+		const { dom, cleanup, navigatedTo } = setupDom(LOGIN_HTML);
 		const fetchMock = vi.fn(async () =>
 			new Response(JSON.stringify({ detail: 'Service unavailable' }), { status: 503 }),
 		);
@@ -394,7 +225,6 @@ describe('initObsLogin: login flow', () => {
 			await new Promise((r) => setTimeout(r, 50));
 
 			expect(navigatedTo.value).not.toBe('/observability/dashboard');
-			expect(sessionStorage.getItem('obs-creds')).toBeNull();
 			const errorBox = dom.window.document.querySelector<HTMLElement>('[data-obs-login-error]');
 			expect(errorBox?.hidden).toBe(false);
 			expect(errorBox?.textContent).toContain('not configured');
@@ -404,7 +234,7 @@ describe('initObsLogin: login flow', () => {
 	});
 
 	test('stays on login and shows error when network request fails', async () => {
-		const { dom, cleanup, sessionStorage, navigatedTo } = setupDom(LOGIN_HTML);
+		const { dom, cleanup, navigatedTo } = setupDom(LOGIN_HTML);
 		const fetchMock = vi.fn().mockRejectedValue(new Error('Network error'));
 		Object.assign(globalThis, { fetch: fetchMock });
 
@@ -423,7 +253,6 @@ describe('initObsLogin: login flow', () => {
 			await new Promise((r) => setTimeout(r, 50));
 
 			expect(navigatedTo.value).not.toBe('/observability/dashboard');
-			expect(sessionStorage.getItem('obs-creds')).toBeNull();
 			const errorBox = dom.window.document.querySelector<HTMLElement>('[data-obs-login-error]');
 			expect(errorBox?.hidden).toBe(false);
 			expect(errorBox?.textContent).toContain('Could not reach');
@@ -464,19 +293,6 @@ describe('initObsLogin: login flow', () => {
 		}
 	});
 
-	test('redirects to dashboard immediately if credentials already stored', async () => {
-		const { navigatedTo, cleanup } = setupDom(
-			LOGIN_HTML,
-			{ username: 'admin', password: 'existing' },
-		);
-		try {
-			const { initObsLogin } = await import('../src/lib/obs-auth');
-			initObsLogin();
-			expect(navigatedTo.value).toBe('/observability/dashboard');
-		} finally {
-			cleanup();
-		}
-	});
 });
 
 // ─── obs-dashboard fetch and render tests ─────────────────────────
@@ -523,7 +339,7 @@ describe('obs-dashboard: fetch data and render', () => {
 	};
 
 	function buildFetch(responses: Record<string, unknown>) {
-		return vi.fn(async (url: string) => {
+		return vi.fn(async (url: string, _init?: RequestInit) => {
 			const key = Object.keys(responses).find((k) => url.includes(k));
 			if (!key) throw new Error(`Unexpected fetch to ${url}`);
 			return new Response(JSON.stringify(responses[key]), {
@@ -538,8 +354,8 @@ describe('obs-dashboard: fetch data and render', () => {
 	});
 
 	test('renders summary cards with API data', async () => {
-		const { dom, cleanup } = setupDom(DASHBOARD_HTML, { username: 'admin', password: 'pass' });
-		const fetchMock = buildFetch({ '/obs/summary': SUMMARY, '/obs/requests': REQUESTS_RESPONSE, '/obs/errors': ERRORS_RESPONSE });
+		const { dom, cleanup } = setupDom(DASHBOARD_HTML);
+		const fetchMock = buildFetch({ '/obs/summary': SUMMARY, '/obs/requests': REQUESTS_RESPONSE, '/obs/errors': ERRORS_RESPONSE, '/obs/logout': {} });
 		Object.assign(globalThis, { fetch: fetchMock });
 
 		try {
@@ -551,13 +367,14 @@ describe('obs-dashboard: fetch data and render', () => {
 
 			expect(dom.window.document.querySelector('[data-obs-total-requests]')?.textContent).toBe('42');
 			expect(dom.window.document.querySelector('[data-obs-total-errors]')?.textContent).toBe('3');
+			expect(fetchMock.mock.calls.every((call) => (call[1] as RequestInit | undefined)?.credentials === 'include')).toBe(true);
 		} finally {
 			cleanup();
 		}
 	});
 
 	test('legacy refresh toggle starts and stops automatic refresh', async () => {
-		const { dom, cleanup } = setupDom(DASHBOARD_HTML, { username: 'admin', password: 'pass' });
+		const { dom, cleanup } = setupDom(DASHBOARD_HTML);
 		Object.assign(globalThis, {
 			fetch: buildFetch({
 				'/obs/summary': SUMMARY,
@@ -580,7 +397,7 @@ describe('obs-dashboard: fetch data and render', () => {
 	});
 
 	test('renders requests table rows', async () => {
-		const { dom, cleanup } = setupDom(DASHBOARD_HTML, { username: 'admin', password: 'pass' });
+		const { dom, cleanup } = setupDom(DASHBOARD_HTML);
 		const fetchMock = buildFetch({ '/obs/summary': SUMMARY, '/obs/requests': REQUESTS_RESPONSE, '/obs/errors': ERRORS_RESPONSE });
 		Object.assign(globalThis, { fetch: fetchMock });
 
@@ -600,7 +417,7 @@ describe('obs-dashboard: fetch data and render', () => {
 	});
 
 	test('requests table includes Message column with HTTP reason phrase', async () => {
-		const { dom, cleanup } = setupDom(DASHBOARD_HTML, { username: 'admin', password: 'pass' });
+		const { dom, cleanup } = setupDom(DASHBOARD_HTML);
 		const fetchMock = buildFetch({ '/obs/summary': SUMMARY, '/obs/requests': REQUESTS_RESPONSE, '/obs/errors': ERRORS_RESPONSE });
 		Object.assign(globalThis, { fetch: fetchMock });
 
@@ -627,7 +444,7 @@ describe('obs-dashboard: fetch data and render', () => {
 	});
 
 	test('renders errors table rows', async () => {
-		const { dom, cleanup } = setupDom(DASHBOARD_HTML, { username: 'admin', password: 'pass' });
+		const { dom, cleanup } = setupDom(DASHBOARD_HTML);
 		const fetchMock = buildFetch({ '/obs/summary': SUMMARY, '/obs/requests': REQUESTS_RESPONSE, '/obs/errors': ERRORS_RESPONSE });
 		Object.assign(globalThis, { fetch: fetchMock });
 
@@ -645,7 +462,7 @@ describe('obs-dashboard: fetch data and render', () => {
 	});
 
 	test('shows error banner when fetch fails', async () => {
-		const { dom, cleanup } = setupDom(DASHBOARD_HTML, { username: 'admin', password: 'pass' });
+		const { dom, cleanup } = setupDom(DASHBOARD_HTML);
 		const fetchMock = vi.fn().mockRejectedValue(new Error('Network down'));
 		Object.assign(globalThis, { fetch: fetchMock });
 
@@ -663,11 +480,8 @@ describe('obs-dashboard: fetch data and render', () => {
 		}
 	});
 
-	test('clears credentials and redirects on 401 response', async () => {
-		const { cleanup, sessionStorage, navigatedTo } = setupDom(
-			DASHBOARD_HTML,
-			{ username: 'admin', password: 'wrongpass' },
-		);
+	test('redirects to login on an expired session', async () => {
+		const { cleanup, navigatedTo } = setupDom(DASHBOARD_HTML);
 		const fetchMock = vi.fn(async () =>
 			new Response(JSON.stringify({ detail: 'Unauthorized' }), {
 				status: 401,
@@ -682,19 +496,15 @@ describe('obs-dashboard: fetch data and render', () => {
 
 			await new Promise((r) => setTimeout(r, 50));
 
-			expect(sessionStorage.getItem('obs-creds')).toBeNull();
 			expect(navigatedTo.value).toBe('/observability');
 		} finally {
 			cleanup();
 		}
 	});
 
-	test('logout button clears credentials and redirects', async () => {
-		const { dom, cleanup, sessionStorage, navigatedTo } = setupDom(
-			DASHBOARD_HTML,
-			{ username: 'admin', password: 'pass' },
-		);
-		const fetchMock = buildFetch({ '/obs/summary': SUMMARY, '/obs/requests': REQUESTS_RESPONSE, '/obs/errors': ERRORS_RESPONSE });
+	test('logout invalidates the cookie session and redirects', async () => {
+		const { dom, cleanup, navigatedTo } = setupDom(DASHBOARD_HTML);
+		const fetchMock = buildFetch({ '/obs/summary': SUMMARY, '/obs/requests': REQUESTS_RESPONSE, '/obs/errors': ERRORS_RESPONSE, '/obs/logout': {} });
 		Object.assign(globalThis, { fetch: fetchMock });
 
 		try {
@@ -703,8 +513,10 @@ describe('obs-dashboard: fetch data and render', () => {
 
 			const logoutBtn = dom.window.document.querySelector<HTMLButtonElement>('[data-obs-logout]');
 			logoutBtn?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+			await new Promise((r) => setTimeout(r, 0));
 
-			expect(sessionStorage.getItem('obs-creds')).toBeNull();
+			const logoutCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/obs/logout'));
+			expect(logoutCall?.[1]).toMatchObject({ method: 'POST', credentials: 'include' });
 			expect(navigatedTo.value).toBe('/observability');
 		} finally {
 			cleanup();
@@ -861,7 +673,7 @@ describe('obs-dashboard: filter selects and auto-refresh select', () => {
 	});
 
 	test('initObsDashboard fetches timeseries when obs-chart canvas is present', async () => {
-		const { dom, cleanup } = setupDom(DASHBOARD_WITH_FILTERS_HTML, { username: 'admin', password: 'pass' });
+		const { dom, cleanup } = setupDom(DASHBOARD_WITH_FILTERS_HTML);
 		const fetchMock = buildFetch({
 			'/obs/summary': SUMMARY,
 			'/obs/timeseries': TIMESERIES_RESPONSE,
@@ -886,7 +698,7 @@ describe('obs-dashboard: filter selects and auto-refresh select', () => {
 	});
 
 	test('range select change triggers re-fetch with new range param', async () => {
-		const { dom, cleanup } = setupDom(DASHBOARD_WITH_FILTERS_HTML, { username: 'admin', password: 'pass' });
+		const { dom, cleanup } = setupDom(DASHBOARD_WITH_FILTERS_HTML);
 		const fetchMock = buildFetch({
 			'/obs/summary': SUMMARY,
 			'/obs/timeseries': TIMESERIES_RESPONSE,
@@ -921,7 +733,7 @@ describe('obs-dashboard: filter selects and auto-refresh select', () => {
 	});
 
 	test('status select change triggers re-fetch with new status param', async () => {
-		const { dom, cleanup } = setupDom(DASHBOARD_WITH_FILTERS_HTML, { username: 'admin', password: 'pass' });
+		const { dom, cleanup } = setupDom(DASHBOARD_WITH_FILTERS_HTML);
 		const fetchMock = buildFetch({
 			'/obs/summary': SUMMARY,
 			'/obs/timeseries': TIMESERIES_RESPONSE,
@@ -956,7 +768,7 @@ describe('obs-dashboard: filter selects and auto-refresh select', () => {
 	});
 
 	test('auto-refresh select with 0 disables auto-refresh', async () => {
-		const { dom, cleanup } = setupDom(DASHBOARD_WITH_FILTERS_HTML, { username: 'admin', password: 'pass' });
+		const { dom, cleanup } = setupDom(DASHBOARD_WITH_FILTERS_HTML);
 		const fetchMock = buildFetch({
 			'/obs/summary': SUMMARY,
 			'/obs/timeseries': TIMESERIES_RESPONSE,
@@ -987,7 +799,7 @@ describe('obs-dashboard: filter selects and auto-refresh select', () => {
 	});
 
 	test('combined range + status filters send both params', async () => {
-		const { dom, cleanup } = setupDom(DASHBOARD_WITH_FILTERS_HTML, { username: 'admin', password: 'pass' });
+		const { dom, cleanup } = setupDom(DASHBOARD_WITH_FILTERS_HTML);
 		const fetchMock = buildFetch({
 			'/obs/summary': SUMMARY,
 			'/obs/timeseries': TIMESERIES_RESPONSE,
@@ -1028,7 +840,7 @@ describe('obs-dashboard: filter selects and auto-refresh select', () => {
 	});
 
 	test('timeseries data is included in fetch when chart canvas is present', async () => {
-		const { dom, cleanup } = setupDom(DASHBOARD_WITH_FILTERS_HTML, { username: 'admin', password: 'pass' });
+		const { dom, cleanup } = setupDom(DASHBOARD_WITH_FILTERS_HTML);
 		const fetchMock = buildFetch({
 			'/obs/summary': SUMMARY,
 			'/obs/timeseries': TIMESERIES_RESPONSE,
@@ -1055,7 +867,7 @@ describe('obs-dashboard: filter selects and auto-refresh select', () => {
 	});
 
 	test('status=all omits status param from query', async () => {
-		const { dom, cleanup } = setupDom(DASHBOARD_WITH_FILTERS_HTML, { username: 'admin', password: 'pass' });
+		const { dom, cleanup } = setupDom(DASHBOARD_WITH_FILTERS_HTML);
 		const fetchMock = buildFetch({
 			'/obs/summary': SUMMARY,
 			'/obs/timeseries': TIMESERIES_RESPONSE,
@@ -1394,7 +1206,7 @@ describe('obs-dashboard: limit control', () => {
 	});
 
 	test('initial fetch includes limit param from limit select', async () => {
-		const { dom, cleanup } = setupDom(DASHBOARD_LIMIT_HTML, { username: 'admin', password: 'pass' });
+		const { dom, cleanup } = setupDom(DASHBOARD_LIMIT_HTML);
 		const fetchMock = buildFetch({
 			'/obs/summary': SUMMARY,
 			'/obs/timeseries': TIMESERIES_RESPONSE,
@@ -1426,7 +1238,7 @@ describe('obs-dashboard: limit control', () => {
 	});
 
 	test('changing limit select triggers re-fetch with new limit', async () => {
-		const { dom, cleanup } = setupDom(DASHBOARD_LIMIT_HTML, { username: 'admin', password: 'pass' });
+		const { dom, cleanup } = setupDom(DASHBOARD_LIMIT_HTML);
 		const fetchMock = buildFetch({
 			'/obs/summary': SUMMARY,
 			'/obs/timeseries': TIMESERIES_RESPONSE,
@@ -1584,7 +1396,7 @@ describe('obs-dashboard: zoom reset button', () => {
 	});
 
 	test('reset zoom button is hidden initially', async () => {
-		const { dom, cleanup } = setupDom(DASHBOARD_ZOOM_HTML, { username: 'admin', password: 'pass' });
+		const { dom, cleanup } = setupDom(DASHBOARD_ZOOM_HTML);
 		const fetchMock = buildFetch({
 			'/obs/summary': SUMMARY,
 			'/obs/timeseries': TIMESERIES_RESPONSE,
@@ -1608,7 +1420,7 @@ describe('obs-dashboard: zoom reset button', () => {
 	});
 
 	test('clicking reset zoom button removes from_ts/to_ts from next fetch', async () => {
-		const { dom, cleanup } = setupDom(DASHBOARD_ZOOM_HTML, { username: 'admin', password: 'pass' });
+		const { dom, cleanup } = setupDom(DASHBOARD_ZOOM_HTML);
 		const fetchMock = buildFetch({
 			'/obs/summary': SUMMARY,
 			'/obs/timeseries': TIMESERIES_RESPONSE,
@@ -1648,7 +1460,7 @@ describe('obs-dashboard: zoom reset button', () => {
 	});
 
 	test('brush selection on chart triggers fetch with from_ts/to_ts and shows reset button', async () => {
-		const { dom, cleanup } = setupDom(DASHBOARD_ZOOM_HTML, { username: 'admin', password: 'pass' });
+		const { dom, cleanup } = setupDom(DASHBOARD_ZOOM_HTML);
 		const fetchMock = buildFetch({
 			'/obs/summary': SUMMARY,
 			'/obs/timeseries': TIMESERIES_RESPONSE,
@@ -1764,7 +1576,7 @@ describe('obs-dashboard: auto-refresh select behavior', () => {
 	test('selecting a positive interval starts auto-refresh polling', async () => {
 		vi.useFakeTimers();
 
-		const { dom, cleanup } = setupDom(DASHBOARD_WITH_FILTERS_HTML, { username: 'admin', password: 'pass' });
+		const { dom, cleanup } = setupDom(DASHBOARD_WITH_FILTERS_HTML);
 		const fetchMock = buildFetch({
 			'/obs/summary': SUMMARY,
 			'/obs/timeseries': TIMESERIES_RESPONSE,
@@ -1804,7 +1616,7 @@ describe('obs-dashboard: auto-refresh select behavior', () => {
 	test('switching from positive interval to 0 stops polling', async () => {
 		vi.useFakeTimers();
 
-		const { dom, cleanup } = setupDom(DASHBOARD_WITH_FILTERS_HTML, { username: 'admin', password: 'pass' });
+		const { dom, cleanup } = setupDom(DASHBOARD_WITH_FILTERS_HTML);
 		const fetchMock = buildFetch({
 			'/obs/summary': SUMMARY,
 			'/obs/timeseries': TIMESERIES_RESPONSE,

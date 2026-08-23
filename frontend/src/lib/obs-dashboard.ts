@@ -1,6 +1,6 @@
 // obs-dashboard.ts — fetches /obs/* endpoints and wires the dashboard UI.
 
-import { clearCredentials, encodeBasic, obsNavigateTo, requireAuth } from './obs-auth';
+import { obsNavigateTo } from './obs-auth';
 import { bindBrushInteraction, type ObsBucket, initObsChart, setOnBrushSelect, updateObsChart } from './obs-chart';
 import { formatLastUpdated, formatTimestamp } from './obs-time';
 
@@ -41,15 +41,10 @@ export type ObsTimeseriesResponse = {
 // Fetch helpers
 // ---------------------------------------------------------------------------
 
-async function fetchObs<T>(url: string, authHeader: string): Promise<T> {
-	const response = await fetch(url, {
-		headers: {
-			Authorization: authHeader,
-		},
-	});
+async function fetchObs<T>(url: string): Promise<T> {
+	const response = await fetch(url, { credentials: 'include' });
 
 	if (response.status === 401 || response.status === 403) {
-		clearCredentials();
 		obsNavigateTo('/observability');
 		// Return dummy value — navigation already happening.
 		throw new Error('Unauthorized');
@@ -91,7 +86,6 @@ export function buildFilterQuery(filters: DashboardFilters): string {
 
 export async function fetchDashboardData(
 	endpoint: string,
-	authHeader: string,
 	filters: DashboardFilters = {},
 ): Promise<{
 	summary: ObsSummary;
@@ -103,13 +97,13 @@ export async function fetchDashboardData(
 
 	const timeseriesPromise: Promise<ObsTimeseriesResponse | undefined> =
 		qs || filters.range
-			? fetchObs<ObsTimeseriesResponse>(`${endpoint}/obs/timeseries${qs}`, authHeader)
+			? fetchObs<ObsTimeseriesResponse>(`${endpoint}/obs/timeseries${qs}`)
 			: Promise.resolve(undefined);
 
 	const [summaryData, requestsData, errorsData, timeseriesData] = await Promise.all([
-		fetchObs<ObsSummary>(`${endpoint}/obs/summary${qs}`, authHeader),
-		fetchObs<{ items: ObsRequestItem[]; total: number }>(`${endpoint}/obs/requests${qs}`, authHeader),
-		fetchObs<{ items: ObsErrorItem[]; total: number }>(`${endpoint}/obs/errors${qs}`, authHeader),
+		fetchObs<ObsSummary>(`${endpoint}/obs/summary${qs}`),
+		fetchObs<{ items: ObsRequestItem[]; total: number }>(`${endpoint}/obs/requests${qs}`),
+		fetchObs<{ items: ObsErrorItem[]; total: number }>(`${endpoint}/obs/errors${qs}`),
 		timeseriesPromise,
 	]);
 
@@ -250,9 +244,6 @@ function escapeHtml(str: string): string {
 // ---------------------------------------------------------------------------
 
 export function initObsDashboard(): void {
-	const creds = requireAuth();
-	const authHeader = encodeBasic(creds.username, creds.password);
-
 	const app = document.querySelector<HTMLElement>('[data-obs-dashboard]');
 	if (!app) return;
 
@@ -342,7 +333,7 @@ export function initObsDashboard(): void {
 	const refresh = async (): Promise<void> => {
 		try {
 			const filters = isAdvancedMode ? currentFilters() : {};
-			const data = await fetchDashboardData(endpoint, authHeader, filters);
+			const data = await fetchDashboardData(endpoint, filters);
 			clearError();
 
 			if (statusSelect) {
@@ -447,13 +438,11 @@ export function initObsDashboard(): void {
 	// Wire logout
 	if (logoutButton) {
 		logoutButton.addEventListener('click', () => {
-			clearCredentials();
-			obsNavigateTo('/observability');
+			fetch(`${endpoint}/obs/logout`, { method: 'POST', credentials: 'include' })
+				.finally(() => obsNavigateTo('/observability'));
 		});
 	}
 
 	// Initial load
 	void refresh();
 }
-
-export { clearCredentials, loadCredentials } from './obs-auth';
