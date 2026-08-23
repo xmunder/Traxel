@@ -165,6 +165,7 @@ class TestCookieSessionContract:
             )
 
         assert "Secure" in response.headers["set-cookie"]
+        assert "SameSite=none" in response.headers["set-cookie"]
 
     def test_logout_invalidates_session(self, monkeypatch: pytest.MonkeyPatch) -> None:
         with obs_client(monkeypatch, username="admin", secret="secret") as client:

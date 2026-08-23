@@ -109,7 +109,7 @@ async def login(
         max_age=settings.obs_session_ttl_seconds,
         httponly=True,
         secure=settings.session_cookie_secure,
-        samesite="lax",
+        samesite=settings.session_cookie_samesite,
         path="/",
     )
     return {"authenticated": True}

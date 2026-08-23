@@ -69,6 +69,10 @@ class Settings(BaseSettings):
         return self.obs_cookie_secure if self.obs_cookie_secure is not None else self.deployment_environment == "production"
 
     @property
+    def session_cookie_samesite(self) -> str:
+        return "none" if self.deployment_environment == "production" else "lax"
+
+    @property
     def effective_cors_allow_origins(self) -> tuple[str, ...]:
         if self.deployment_environment == "production":
             return tuple(
