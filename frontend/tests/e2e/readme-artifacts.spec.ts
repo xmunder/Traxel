@@ -98,6 +98,6 @@ test('captures current README product evidence', async ({ page }) => {
 	await expect(page.locator('[data-obs-total-requests]')).toHaveText('128');
 	await expect(page.locator('[data-obs-requests] .obs-table')).toBeVisible();
 	await expect(page.locator('[data-obs-errors] .obs-table')).toBeVisible();
-	await page.waitForTimeout(1_500);
+	await expect(page.locator('[data-obs-last-updated]')).not.toHaveText('—');
 	await page.screenshot({ path: resolve(docsImages, 'traxel-observability-dashboard.png'), fullPage: true });
 });
