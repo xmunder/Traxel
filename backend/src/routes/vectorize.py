@@ -5,6 +5,7 @@ from time import perf_counter
 
 from fastapi import APIRouter, HTTPException, Request
 from starlette.datastructures import UploadFile
+from starlette.concurrency import run_in_threadpool
 
 from src.models.schemas import ErrorResponse, VectorizeMetadata, VectorizeResponse
 from src.services.image_processor import ProcessedImage, process_image
@@ -39,6 +40,7 @@ def build_vectorize_response(
     "/vectorize",
     responses={
         400: {"model": ErrorResponse},
+        429: {"model": ErrorResponse},
         413: {"model": ErrorResponse},
         500: {"model": ErrorResponse},
     },
@@ -61,8 +63,10 @@ async def post_vectorize(request: Request) -> VectorizeResponse:
         validated_image = await validate_uploaded_image(
             upload if isinstance(upload, UploadFile) else None
         )
-        processed_image = process_image(validated_image)
-        vectorize_response = build_vectorize_response(processed_image)
+        processed_image = await run_in_threadpool(process_image, validated_image)
+        vectorize_response = await run_in_threadpool(
+            build_vectorize_response, processed_image
+        )
         processing_duration_ms = int((perf_counter() - started_at) * 1000)
         response = vectorize_response.model_copy(
             update={

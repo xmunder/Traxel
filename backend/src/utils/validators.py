@@ -5,7 +5,10 @@ from io import BytesIO
 from pathlib import Path
 
 from PIL import Image
+from PIL.Image import DecompressionBombError, DecompressionBombWarning
+import warnings
 from starlette.datastructures import UploadFile
+from starlette.concurrency import run_in_threadpool
 
 from src.config import get_settings
 
@@ -32,11 +35,31 @@ def _extract_extension(filename: str) -> str:
 
 
 def _read_image_metadata(content: bytes) -> tuple[int, int, str]:
+    settings = get_settings()
     try:
         with Image.open(BytesIO(content)) as image:
-            image.load()
             width, height = image.size
             image_format = image.format or "UNKNOWN"
+            if width > settings.obs_max_image_dimension or height > settings.obs_max_image_dimension:
+                raise ImageValidationError(
+                    status_code=413,
+                    detail="The uploaded image dimensions exceed the allowed limit.",
+                )
+            if width * height > settings.obs_max_image_pixels:
+                raise ImageValidationError(
+                    status_code=413,
+                    detail="The uploaded image contains too many pixels.",
+                )
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", DecompressionBombWarning)
+                image.load()
+    except ImageValidationError:
+        raise
+    except (DecompressionBombError, DecompressionBombWarning) as exc:
+        raise ImageValidationError(
+            status_code=413,
+            detail="The uploaded image contains too many pixels.",
+        ) from exc
     except OSError as exc:
         raise ImageValidationError(
             status_code=400,
@@ -81,7 +104,22 @@ async def validate_uploaded_image(upload: UploadFile | None) -> ValidatedImage:
             detail="The uploaded image exceeds the 5 MB limit.",
         )
 
-    width, height, image_format = _read_image_metadata(content)
+    # Pillow decoding can be CPU-heavy and must not block the async event loop.
+    width, height, image_format = await run_in_threadpool(
+        _read_image_metadata, content
+    )
+
+    expected_formats = {
+        "png": "PNG",
+        "jpg": "JPEG",
+        "jpeg": "JPEG",
+        "webp": "WEBP",
+    }
+    if expected_formats.get(extension) != image_format.upper():
+        raise ImageValidationError(
+            status_code=400,
+            detail="Uploaded image content does not match its declared format.",
+        )
 
     return ValidatedImage(
         filename=filename,

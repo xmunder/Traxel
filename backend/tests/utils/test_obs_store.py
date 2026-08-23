@@ -843,3 +843,20 @@ class TestPrune:
 
         count = run(go())
         assert count == 5
+
+    def test_enqueue_truncates_paths_to_255_characters(self) -> None:
+        store = make_store()
+        long_path = "/" + "x" * 400
+
+        run(
+            store.enqueue(
+                timestamp=_ts(),
+                method="GET",
+                path=long_path,
+                status_code=404,
+                duration_ms=1,
+            )
+        )
+
+        row = store._queue.get_nowait()
+        assert len(row["path"]) == 255
