@@ -41,16 +41,9 @@ class Settings(BaseSettings):
         "localhost,127.0.0.1,testserver,traxel.pages.dev,*.traxel.pages.dev,traxel-api.cglabs.site"
     )
 
-    @field_validator("cors_allow_origins", mode="before")
+    @field_validator("cors_allow_origins", "trusted_hosts", mode="before")
     @classmethod
-    def parse_cors_allow_origins(cls, value: str | tuple[str, ...]) -> tuple[str, ...]:
-        if isinstance(value, str):
-            return _parse_csv(value)
-        return value
-
-    @field_validator("trusted_hosts", mode="before")
-    @classmethod
-    def parse_trusted_hosts(cls, value: str | tuple[str, ...]) -> tuple[str, ...]:
+    def parse_csv_settings(cls, value: str | tuple[str, ...]) -> tuple[str, ...]:
         if isinstance(value, str):
             return _parse_csv(value)
         return value
