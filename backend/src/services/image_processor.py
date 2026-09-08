@@ -167,17 +167,12 @@ def _build_color_regions(quantized_rgb: np.ndarray) -> list[ColorRegion]:
 
 
 def _remove_small_components(mask: np.ndarray) -> np.ndarray:
-    component_count, labels, stats, _centroids = cv2.connectedComponentsWithStats(
+    _component_count, labels, stats, _centroids = cv2.connectedComponentsWithStats(
         mask, connectivity=8
     )
-    cleaned_mask = np.zeros_like(mask, dtype=np.uint8)
-
-    for component_index in range(1, component_count):
-        area = int(stats[component_index, cv2.CC_STAT_AREA])
-        if area >= MIN_REGION_PIXELS:
-            cleaned_mask[labels == component_index] = 1
-
-    return cleaned_mask
+    keep = stats[:, cv2.CC_STAT_AREA] >= MIN_REGION_PIXELS
+    keep[0] = False  # Label zero is always background, irrespective of area.
+    return keep[labels].astype(np.uint8)
 
 
 def _to_hex(rgb: tuple[int, int, int]) -> str:
