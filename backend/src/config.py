@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,7 +23,10 @@ class Settings(BaseSettings):
     request_id_header: str = "X-Request-ID"
     process_time_header: str = "X-Process-Time-MS"
     max_file_size: int = 5 * 1024 * 1024
-    processing_max_dimension: int = 1024
+    # Bound processing cost and output complexity for untrusted images.
+    processing_max_dimension: int = 512
+    # Maximum contour deviation in processing pixels; zero disables simplification.
+    contour_simplify_tolerance: float = Field(default=0.5, ge=0, le=2, allow_inf_nan=False)
     default_max_colors: int = 8
     allowed_extensions: tuple[str, ...] = ("png", "jpg", "jpeg", "webp")
     allowed_content_types: tuple[str, ...] = ("image/png", "image/jpeg", "image/webp")
@@ -34,10 +37,20 @@ class Settings(BaseSettings):
         "http://127.0.0.1:4411,"
         "https://traxel.pages.dev"
     )
+    trusted_hosts: tuple[str, ...] = _parse_csv(
+        "localhost,127.0.0.1,testserver,traxel.pages.dev,*.traxel.pages.dev,traxel-api.cglabs.site"
+    )
 
     @field_validator("cors_allow_origins", mode="before")
     @classmethod
     def parse_cors_allow_origins(cls, value: str | tuple[str, ...]) -> tuple[str, ...]:
+        if isinstance(value, str):
+            return _parse_csv(value)
+        return value
+
+    @field_validator("trusted_hosts", mode="before")
+    @classmethod
+    def parse_trusted_hosts(cls, value: str | tuple[str, ...]) -> tuple[str, ...]:
         if isinstance(value, str):
             return _parse_csv(value)
         return value

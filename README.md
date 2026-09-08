@@ -144,6 +144,19 @@ the generated frames in `/tmp/opencode/traxel-readme-frames`.
 
 ## Current tradeoffs
 
+The vectorizer keeps transparent backgrounds and writes partial transparency as
+SVG `fill-opacity`. Hidden pixels do not participate in color clustering, and
+resizing uses premultiplied alpha to avoid color halos. Partial opacity is
+approximated in bounded bands (16 alpha values per band, with fully opaque pixels
+kept separate); this remains a flat-artwork tracer rather than a gradient tracer.
+
+Small components are removed with a single lookup over the component labels.
+Contours are simplified with `CONTOUR_SIMPLIFY_TOLERANCE` (default `0.5` processing
+pixels, `0` disables it); candidates that collapse a contour or change its area
+by more than 1% are discarded. SVGs still use straight segments, preserve hole
+subpaths, and scale to the original dimensions. `PROCESSING_MAX_DIMENSION`
+remains `512` by default to bound CPU cost and SVG complexity.
+
 - The frontend runs in `astro dev` mode to keep the MVP simple and fast to iterate on.
 - `PUBLIC_BACKEND_ENDPOINT` defaults to `http://localhost:8000`; the frontend derives `/vectorize` and `/obs/*` from that base because the browser performs the fetch, not the frontend container.
 - The current MVP is centered on Docker Compose to reduce local environment drift.

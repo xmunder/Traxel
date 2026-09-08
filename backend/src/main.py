@@ -8,6 +8,7 @@ from time import perf_counter
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 
 from src.config import get_settings
@@ -194,6 +195,21 @@ async def rate_limit_middleware(request: Request, call_next):
     return await call_next(request)
 
 
+async def request_size_middleware(request: Request, call_next):
+    """Reject oversized uploads before Starlette parses multipart form data."""
+    settings = get_settings()
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            length = int(content_length)
+        except ValueError:
+            return JSONResponse(status_code=400, content={"detail": "Invalid Content-Length."})
+        # Allow a small multipart envelope around the configured file limit.
+        if length > settings.max_file_size + 256 * 1024:
+            return JSONResponse(status_code=413, content={"detail": "Request body exceeds the upload limit."})
+    return await call_next(request)
+
+
 def create_app() -> FastAPI:
     configure_logging()
     settings = get_settings()
@@ -208,6 +224,10 @@ def create_app() -> FastAPI:
     )
     app.state.rate_limiter = RateLimiter(max_keys=settings.rate_limit_max_keys)
     app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=list(settings.trusted_hosts),
+    )
+    app.add_middleware(
         CORSMiddleware,
         allow_origins=list(settings.effective_cors_allow_origins),
         allow_credentials=True,
@@ -216,6 +236,7 @@ def create_app() -> FastAPI:
     )
 
     app.middleware("http")(observability_middleware)
+    app.middleware("http")(request_size_middleware)
     app.middleware("http")(rate_limit_middleware)
 
     app.include_router(health_router)
