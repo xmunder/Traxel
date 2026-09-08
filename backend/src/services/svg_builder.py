@@ -27,6 +27,7 @@ def build_svg_document(vectorization: VectorizationResult) -> str:
             {
                 "d": path.d,
                 "fill": path.color_hex,
+                **({"fill-opacity": f"{path.opacity:.6f}".rstrip("0").rstrip(".")} if path.opacity < 1.0 else {}),
                 "fill-rule": "evenodd",
                 "clip-rule": "evenodd",
             },

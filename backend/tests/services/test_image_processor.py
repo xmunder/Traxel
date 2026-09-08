@@ -39,9 +39,11 @@ def test_process_image_normalizes_transparency_and_preserves_dimensions() -> Non
     assert processed.original_height == 8
     assert processed.processing_width == 8
     assert processed.processing_height == 8
-    assert any(color.hex == "#FFFFFF" for color in processed.palette)
+    assert not any(color.hex == "#FFFFFF" for color in processed.palette)
     assert any(color.hex == "#FF0000" for color in processed.palette)
-    assert len(processed.color_regions) == 2
+    assert len(processed.color_regions) == 1
+    assert processed.color_regions[0].pixel_count == 36
+    assert not processed.color_regions[0].mask[0, 0]
 
 
 def test_process_image_quantizes_to_supported_color_limit() -> None:

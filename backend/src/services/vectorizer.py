@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 
 from src.services.image_processor import ProcessedImage
+from src.config import get_settings
 
 
 MIN_PATH_AREA = 4.0
@@ -17,6 +18,7 @@ class VectorPath:
     color_hex: str
     d: str
     area: float
+    opacity: float = 1.0
 
 
 @dataclass(slots=True, frozen=True)
@@ -34,6 +36,7 @@ def vectorize_processed_image(processed_image: ProcessedImage) -> VectorizationR
     paths: list[VectorPath] = []
     scale_x = processed_image.original_width / processed_image.processing_width
     scale_y = processed_image.original_height / processed_image.processing_height
+    tolerance = get_settings().contour_simplify_tolerance
 
     for region in processed_image.color_regions:
         paths.extend(
@@ -42,6 +45,8 @@ def vectorize_processed_image(processed_image: ProcessedImage) -> VectorizationR
                 region.color_hex,
                 scale_x=scale_x,
                 scale_y=scale_y,
+                opacity=region.opacity,
+                tolerance=tolerance,
             )
         )
 
@@ -58,6 +63,8 @@ def _vectorize_region(
     *,
     scale_x: float,
     scale_y: float,
+    opacity: float = 1.0,
+    tolerance: float = 0.5,
 ) -> list[VectorPath]:
     contour_mask = np.ascontiguousarray(mask.astype(np.uint8))
     contours, hierarchy = cv2.findContours(
@@ -81,7 +88,7 @@ def _vectorize_region(
         if area < MIN_PATH_AREA:
             continue
 
-        segments = [_contour_to_svg_path(contour, scale_x=scale_x, scale_y=scale_y)]
+        segments = [_contour_to_svg_path(contour, scale_x=scale_x, scale_y=scale_y, tolerance=tolerance)]
         child_index = int(contour_tree[index][2])
 
         while child_index != -1:
@@ -92,6 +99,7 @@ def _vectorize_region(
                         child_contour,
                         scale_x=scale_x,
                         scale_y=scale_y,
+                        tolerance=tolerance,
                     )
                 )
             child_index = int(contour_tree[child_index][0])
@@ -100,12 +108,26 @@ def _vectorize_region(
         if not path_data:
             continue
 
-        paths.append(VectorPath(color_hex=color_hex, d=path_data, area=area))
+        paths.append(VectorPath(color_hex=color_hex, d=path_data, area=area, opacity=opacity))
 
     return paths
 
 
-def _contour_to_svg_path(contour: np.ndarray, *, scale_x: float, scale_y: float) -> str:
+def _simplify_contour(contour: np.ndarray, tolerance: float) -> np.ndarray:
+    if tolerance <= 0 or len(contour) <= 4:
+        return contour
+    simplified = cv2.approxPolyDP(contour, tolerance, closed=True)
+    original_area = abs(cv2.contourArea(contour))
+    # Avoid collapsing small holes or meaningfully changing enclosed area.
+    if len(simplified) < 3 or abs(abs(cv2.contourArea(simplified)) - original_area) > original_area * 0.01:
+        return contour
+    return simplified
+
+
+def _contour_to_svg_path(
+    contour: np.ndarray, *, scale_x: float, scale_y: float, tolerance: float = 0.5
+) -> str:
+    contour = _simplify_contour(contour, tolerance)
     points = contour.reshape(-1, 2)
     if len(points) < 3:
         return ""

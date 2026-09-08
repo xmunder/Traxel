@@ -12,8 +12,8 @@ from src.config import get_settings
 from src.utils.validators import ValidatedImage
 
 
-DEFAULT_BACKGROUND_RGB = (255, 255, 255)
 MIN_REGION_PIXELS = 2
+ALPHA_BUCKET_SIZE = 16
 
 
 @dataclass(slots=True, frozen=True)
@@ -29,6 +29,7 @@ class ColorRegion:
     color_hex: str
     pixel_count: int
     mask: np.ndarray
+    opacity: float = 1.0
 
 
 @dataclass(slots=True, frozen=True)
@@ -43,28 +44,39 @@ class ProcessedImage:
 
     @property
     def colors_detected(self) -> int:
-        return len(self.color_regions)
+        return len(self.palette)
 
 
 def process_image(validated_image: ValidatedImage) -> ProcessedImage:
     settings = get_settings()
-    normalized_rgb = _normalize_image(validated_image.content)
-    processing_rgb = _resize_for_processing(
-        normalized_rgb, max_dimension=settings.processing_max_dimension
-    )
+    with Image.open(BytesIO(validated_image.content), formats=("PNG", "JPEG", "WEBP")) as image:
+        original_width, original_height = image.size
+        rgba = image.convert("RGBA")
+        # Pillow resizes RGBA using premultiplied alpha: hidden RGB values
+        # cannot bleed into visible edges, as happens when compositing on white.
+        rgba.thumbnail(
+            (settings.processing_max_dimension, settings.processing_max_dimension),
+            Image.Resampling.BOX,
+        )
+        pixels = np.array(rgba, dtype=np.uint8)
+    processing_rgb = pixels[:, :, :3]
+    alpha = pixels[:, :, 3]
+    visible = alpha > 0
     quantized_rgb = _quantize_rgb(
-        processing_rgb, max_colors=settings.default_max_colors
+        processing_rgb, max_colors=settings.default_max_colors, visible=visible
     )
-    color_regions = _build_color_regions(quantized_rgb)
+    color_regions = _build_color_regions(quantized_rgb, alpha=alpha)
+    color_counts: dict[tuple[int, int, int], int] = {}
+    for region in color_regions:
+        color_counts[region.rgb] = color_counts.get(region.rgb, 0) + region.pixel_count
     palette = [
         DominantColor(
-            rgb=region.rgb,
-            hex=region.color_hex,
-            pixel_count=region.pixel_count,
+            rgb=rgb,
+            hex=_to_hex(rgb),
+            pixel_count=count,
         )
-        for region in color_regions
+        for rgb, count in color_counts.items()
     ]
-    original_height, original_width = normalized_rgb.shape[:2]
     processing_height, processing_width = quantized_rgb.shape[:2]
 
     return ProcessedImage(
@@ -78,42 +90,12 @@ def process_image(validated_image: ValidatedImage) -> ProcessedImage:
     )
 
 
-def _normalize_image(content: bytes) -> np.ndarray:
-    with Image.open(BytesIO(content)) as image:
-        image.load()
-
-        if image.mode in {"RGBA", "LA"} or "transparency" in image.info:
-            rgba_image = image.convert("RGBA")
-            background = Image.new(
-                "RGBA", rgba_image.size, DEFAULT_BACKGROUND_RGB + (255,)
-            )
-            image = Image.alpha_composite(background, rgba_image).convert("RGB")
-        else:
-            image = image.convert("RGB")
-
-    return np.array(image, dtype=np.uint8)
-
-
-def _resize_for_processing(rgb_image: np.ndarray, *, max_dimension: int) -> np.ndarray:
-    height, width = rgb_image.shape[:2]
-    longest_side = max(width, height)
-
-    if longest_side <= max_dimension:
-        return rgb_image.copy()
-
-    scale = max_dimension / float(longest_side)
-    resized_width = max(1, int(round(width * scale)))
-    resized_height = max(1, int(round(height * scale)))
-
-    return cv2.resize(
-        rgb_image,
-        (resized_width, resized_height),
-        interpolation=cv2.INTER_AREA,
-    )
-
-
-def _quantize_rgb(rgb_image: np.ndarray, *, max_colors: int) -> np.ndarray:
-    flat_pixels = rgb_image.reshape(-1, 3)
+def _quantize_rgb(
+    rgb_image: np.ndarray, *, max_colors: int, visible: np.ndarray
+) -> np.ndarray:
+    flat_pixels = rgb_image[visible]
+    if not len(flat_pixels):
+        return np.zeros_like(rgb_image)
     unique_colors = np.unique(flat_pixels, axis=0)
 
     if len(unique_colors) <= max_colors:
@@ -133,12 +115,17 @@ def _quantize_rgb(rgb_image: np.ndarray, *, max_colors: int) -> np.ndarray:
     quantized_pixels = np.clip(np.round(centers), 0, 255).astype(np.uint8)[
         labels.flatten()
     ]
-    return quantized_pixels.reshape(rgb_image.shape)
+    result = np.zeros_like(rgb_image)
+    result[visible] = quantized_pixels
+    return result
 
 
-def _build_color_regions(quantized_rgb: np.ndarray) -> list[ColorRegion]:
-    flat_pixels = quantized_rgb.reshape(-1, 3)
+def _build_color_regions(quantized_rgb: np.ndarray, *, alpha: np.ndarray) -> list[ColorRegion]:
+    visible = alpha > 0
+    flat_pixels = quantized_rgb[visible]
     unique_colors, counts = np.unique(flat_pixels, axis=0, return_counts=True)
+    alpha_bands = alpha // ALPHA_BUCKET_SIZE
+    alpha_bands = np.where(alpha == 255, 16, alpha_bands)
 
     regions: list[ColorRegion] = []
     for color, _count in sorted(
@@ -146,7 +133,7 @@ def _build_color_regions(quantized_rgb: np.ndarray) -> list[ColorRegion]:
         key=lambda item: int(item[1]),
         reverse=True,
     ):
-        raw_mask = np.all(quantized_rgb == color, axis=2).astype(np.uint8)
+        raw_mask = (np.all(quantized_rgb == color, axis=2) & visible).astype(np.uint8)
         cleaned_mask = _remove_small_components(raw_mask)
         pixel_count = int(cleaned_mask.sum())
 
@@ -154,14 +141,19 @@ def _build_color_regions(quantized_rgb: np.ndarray) -> list[ColorRegion]:
             continue
 
         rgb = cast(tuple[int, int, int], (int(color[0]), int(color[1]), int(color[2])))
-        regions.append(
-            ColorRegion(
-                rgb=rgb,
-                color_hex=_to_hex(rgb),
-                pixel_count=pixel_count,
-                mask=cleaned_mask.astype(bool),
+        # Disjoint opacity bands bound SVG complexity. Keep fully opaque
+        # pixels in their own band; average the original alpha within others.
+        for band in np.unique(alpha_bands[cleaned_mask.astype(bool)]):
+            mask = (cleaned_mask > 0) & (alpha_bands == band)
+            regions.append(
+                ColorRegion(
+                    rgb=rgb,
+                    color_hex=_to_hex(rgb),
+                    pixel_count=int(mask.sum()),
+                    mask=mask,
+                    opacity=float(alpha[mask].mean()) / 255.0,
+                )
             )
-        )
 
     return regions
 
